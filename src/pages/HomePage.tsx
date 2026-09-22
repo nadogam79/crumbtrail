@@ -39,7 +39,7 @@ export function HomePage() {
         {status === 'active' && route && (
           <>
             <p>
-              <strong>{route.destinationLabel}</strong>(으)로 이동 중이에요. (T+{simMinutesElapsed}분 / 예상{' '}
+              <strong>{route.destinationLabel}</strong>(으)로 이동 중이에요. (T+{Math.round(simMinutesElapsed)}분 / 예상{' '}
               {route.etaMinutes}분)
             </p>
             <Link to="/tracking" className="btn btn-primary">

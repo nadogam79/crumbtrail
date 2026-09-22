@@ -218,22 +218,6 @@
   flex-wrap: wrap;
 }
 
-.field-group {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.field-group legend {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-h);
-  padding: 0 4px;
-}
-
 .contact-list {
   list-style: none;
   padding: 0;
@@ -285,42 +269,51 @@
   color: #16a34a;
 }
 
-.debug-card {
-  border-style: dashed;
-}
-
-.breadcrumb-trail {
+.route-map {
   width: 100%;
-  max-width: 320px;
-  aspect-ratio: 1;
-  display: block;
-  margin: 0 auto;
+  height: 320px;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--border);
 }
 
-.trail-planned {
-  stroke: var(--border);
-  stroke-width: 2;
-  stroke-dasharray: 4 4;
+.kakao-pin {
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: var(--shadow);
 }
 
-.trail-actual {
-  fill: none;
-  stroke: var(--accent);
-  stroke-width: 2;
+.kakao-pin-origin {
+  background: var(--text-h);
+  color: var(--bg);
 }
 
-.trail-origin {
-  fill: var(--text);
+.kakao-pin-destination {
+  background: #16a34a;
+  color: white;
 }
 
-.trail-destination {
-  fill: #16a34a;
+.kakao-pin-current {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg);
+  box-shadow: var(--shadow);
 }
 
-.trail-current {
-  fill: var(--accent);
-  stroke: var(--bg);
-  stroke-width: 2;
+.kakao-crumb {
+  font-size: 16px;
+  transform: translateY(4px);
+}
+
+.map-hint {
+  font-size: 13px;
+  color: var(--text);
+  margin: 0;
 }
 
 .trail-current-coord {

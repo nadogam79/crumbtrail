@@ -2,11 +2,10 @@ import { useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useTracking } from '../context/TrackingContext'
 import { StatusBadge } from '../components/StatusBadge'
-import { BreadcrumbTrail } from '../components/BreadcrumbTrail'
+import { RouteMap } from '../components/RouteMap'
 
 export function TrackingPage() {
-  const { status, route, breadcrumbs, simMinutesElapsed, lastCheckInMinute, movementMode, checkIn, setMovementMode } =
-    useTracking()
+  const { status, route, breadcrumbs, simMinutesElapsed, lastCheckInMinute, checkIn } = useTracking()
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -15,8 +14,9 @@ export function TrackingPage() {
 
   if (!route) return null
 
+  const elapsedMinutes = Math.round(simMinutesElapsed)
   const sinceCheckIn = simMinutesElapsed - (lastCheckInMinute ?? 0)
-  const nextCheckInDeadline = Math.max(0, route.checkInIntervalMinutes - sinceCheckIn)
+  const nextCheckInDeadline = Math.max(0, Math.round(route.checkInIntervalMinutes - sinceCheckIn))
   const current = breadcrumbs[breadcrumbs.length - 1]
 
   return (
@@ -27,7 +27,7 @@ export function TrackingPage() {
           <StatusBadge status={status} />
         </div>
         <p>
-          경과 T+{simMinutesElapsed}분 / 예상 {route.etaMinutes}분
+          경과 T+{elapsedMinutes}분 / 예상 {route.etaMinutes}분
         </p>
 
         {status === 'alert' && (
@@ -41,10 +41,10 @@ export function TrackingPage() {
 
       <section className="card">
         <h2>이동 경로</h2>
-        <BreadcrumbTrail origin={route.origin} destination={route.destination} breadcrumbs={breadcrumbs} />
+        <RouteMap origin={route.origin} destination={route.destination} current={current?.coord ?? null} />
         {current && (
           <p className="trail-current-coord">
-            현재 위치 ({current.coord.lat.toFixed(4)}, {current.coord.lng.toFixed(4)}) · T+{current.timestamp}분
+            현재 위치 ({current.coord.lat.toFixed(4)}, {current.coord.lng.toFixed(4)}) · T+{Math.round(current.timestamp)}분
           </p>
         )}
       </section>
@@ -60,36 +60,6 @@ export function TrackingPage() {
           <button type="button" className="btn btn-primary" onClick={checkIn}>
             지금 괜찮음 체크인
           </button>
-        </section>
-      )}
-
-      {status === 'active' && (
-        <section className="card debug-card">
-          <h2>테스트용 시뮬레이션 컨트롤</h2>
-          <p>실제 GPS 없이 이상 감지 로직을 확인해볼 수 있어요.</p>
-          <div className="field-row">
-            <button
-              type="button"
-              className={movementMode === 'normal' ? 'btn btn-primary' : 'btn btn-secondary'}
-              onClick={() => setMovementMode('normal')}
-            >
-              정상 이동
-            </button>
-            <button
-              type="button"
-              className={movementMode === 'deviating' ? 'btn btn-primary' : 'btn btn-secondary'}
-              onClick={() => setMovementMode('deviating')}
-            >
-              경로 이탈 시뮬레이션
-            </button>
-            <button
-              type="button"
-              className={movementMode === 'stopped' ? 'btn btn-primary' : 'btn btn-secondary'}
-              onClick={() => setMovementMode('stopped')}
-            >
-              정지/신호끊김 시뮬레이션
-            </button>
-          </div>
         </section>
       )}
     </div>

@@ -1,47 +1,89 @@
-import { useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useTracking } from '../context/TrackingContext'
-
-const DEFAULT_ORIGIN = { lat: 37.4979, lng: 127.0276 } // 강남역 (예시)
-const DEFAULT_DESTINATION = { lat: 37.5065, lng: 127.0432 } // 예시 목적지
+import { RouteMap } from '../components/RouteMap'
+import { loadKakaoMaps } from '../lib/kakaoMaps'
+import type { Coordinate } from '../types'
 
 export function RouteSetupPage() {
   const { contacts, startRoute } = useTracking()
   const navigate = useNavigate()
 
   const [destinationLabel, setDestinationLabel] = useState('집')
-  const [originLat, setOriginLat] = useState(DEFAULT_ORIGIN.lat)
-  const [originLng, setOriginLng] = useState(DEFAULT_ORIGIN.lng)
-  const [destLat, setDestLat] = useState(DEFAULT_DESTINATION.lat)
-  const [destLng, setDestLng] = useState(DEFAULT_DESTINATION.lng)
+  const [origin, setOrigin] = useState<Coordinate | null>(null)
+  const [destination, setDestination] = useState<Coordinate | null>(null)
+  const [locating, setLocating] = useState(false)
+  const [locationError, setLocationError] = useState<string | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchError, setSearchError] = useState<string | null>(null)
+
   const [etaMinutes, setEtaMinutes] = useState(15)
   const [checkInIntervalMinutes, setCheckInIntervalMinutes] = useState(10)
   const [deviationThresholdMeters, setDeviationThresholdMeters] = useState(150)
   const [stillnessThresholdMinutes, setStillnessThresholdMinutes] = useState(8)
-  const [locating, setLocating] = useState(false)
 
-  const useCurrentLocation = () => {
-    if (!navigator.geolocation) return
+  const refreshCurrentLocation = useCallback(() => {
+    if (!navigator.geolocation) {
+      setLocationError('이 브라우저는 위치 정보를 지원하지 않아요.')
+      return
+    }
     setLocating(true)
+    setLocationError(null)
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        setOriginLat(pos.coords.latitude)
-        setOriginLng(pos.coords.longitude)
+        setOrigin({ lat: pos.coords.latitude, lng: pos.coords.longitude })
         setLocating(false)
       },
-      () => setLocating(false),
-      { timeout: 5000 },
+      () => {
+        setLocationError('현재 위치를 가져오지 못했어요. 위치 권한을 확인해주세요.')
+        setLocating(false)
+      },
+      { timeout: 8000 },
     )
+  }, [])
+
+  useEffect(() => {
+    refreshCurrentLocation()
+  }, [refreshCurrentLocation])
+
+  const handleDestinationChange = useCallback((coord: Coordinate) => {
+    setDestination(coord)
+  }, [])
+
+  const runSearch = async () => {
+    if (!searchQuery.trim()) return
+    setSearchError(null)
+    try {
+      const kakao = await loadKakaoMaps()
+      const places = new kakao.maps.services.Places()
+      places.keywordSearch(searchQuery.trim(), (results: any[], status: string) => {
+        if (status !== kakao.maps.services.Status.OK || results.length === 0) {
+          setSearchError('검색 결과가 없어요.')
+          return
+        }
+        const top = results[0]
+        setDestination({ lat: Number(top.y), lng: Number(top.x) })
+        setDestinationLabel(top.place_name)
+      })
+    } catch (err) {
+      setSearchError(err instanceof Error ? err.message : '검색 중 오류가 발생했어요.')
+    }
+  }
+
+  const handleSearchKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== 'Enter') return
+    e.preventDefault()
+    runSearch()
   }
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault()
-    if (contacts.length === 0) return
+    if (contacts.length === 0 || !origin || !destination) return
 
     startRoute({
       destinationLabel,
-      origin: { lat: originLat, lng: originLng },
-      destination: { lat: destLat, lng: destLng },
+      origin,
+      destination,
       etaMinutes,
       checkInIntervalMinutes,
       deviationThresholdMeters,
@@ -54,7 +96,7 @@ export function RouteSetupPage() {
     <div className="page">
       <section className="card">
         <h1>경로 설정</h1>
-        <p>출발 전 예상 이동 루트와 목적지를 등록해두면, 이상 신호를 더 정확히 감지할 수 있어요.</p>
+        <p>목적지를 검색하거나 지도를 클릭해서 지정해주세요. 출발 위치는 현재 위치로 자동 설정돼요.</p>
 
         {contacts.length === 0 && (
           <p className="warning-text">
@@ -63,8 +105,40 @@ export function RouteSetupPage() {
         )}
 
         <form className="form" onSubmit={handleSubmit}>
+          <div className="field-row">
+            <label className="field">
+              <span>목적지 검색</span>
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={handleSearchKeyDown}
+                placeholder="예: 강남역, 회사, 상세 주소"
+              />
+            </label>
+            <button type="button" className="btn btn-secondary" onClick={runSearch}>
+              검색
+            </button>
+          </div>
+          {searchError && <p className="warning-text">{searchError}</p>}
+
+          <p className="map-hint">
+            {locating
+              ? '현재 위치를 확인하는 중…'
+              : origin
+                ? '지도를 클릭하면 목적지를 직접 지정하거나 미세 조정할 수 있어요.'
+                : '현재 위치를 가져오지 못했어요. 위치 새로고침을 눌러주세요.'}
+          </p>
+          {locationError && <p className="warning-text">{locationError}</p>}
+
+          <RouteMap origin={origin} destination={destination} onDestinationChange={handleDestinationChange} />
+
+          <button type="button" className="btn btn-secondary" onClick={refreshCurrentLocation} disabled={locating}>
+            내 위치 새로고침
+          </button>
+
           <label className="field">
-            <span>목적지</span>
+            <span>목적지 이름</span>
             <input
               type="text"
               value={destinationLabel}
@@ -72,57 +146,6 @@ export function RouteSetupPage() {
               required
             />
           </label>
-
-          <fieldset className="field-group">
-            <legend>출발 위치</legend>
-            <div className="field-row">
-              <label className="field">
-                <span>위도</span>
-                <input
-                  type="number"
-                  step="0.0001"
-                  value={originLat}
-                  onChange={(e) => setOriginLat(Number(e.target.value))}
-                />
-              </label>
-              <label className="field">
-                <span>경도</span>
-                <input
-                  type="number"
-                  step="0.0001"
-                  value={originLng}
-                  onChange={(e) => setOriginLng(Number(e.target.value))}
-                />
-              </label>
-            </div>
-            <button type="button" className="btn btn-secondary" onClick={useCurrentLocation} disabled={locating}>
-              {locating ? '위치 확인 중…' : '내 위치 사용'}
-            </button>
-          </fieldset>
-
-          <fieldset className="field-group">
-            <legend>목적지 위치</legend>
-            <div className="field-row">
-              <label className="field">
-                <span>위도</span>
-                <input
-                  type="number"
-                  step="0.0001"
-                  value={destLat}
-                  onChange={(e) => setDestLat(Number(e.target.value))}
-                />
-              </label>
-              <label className="field">
-                <span>경도</span>
-                <input
-                  type="number"
-                  step="0.0001"
-                  value={destLng}
-                  onChange={(e) => setDestLng(Number(e.target.value))}
-                />
-              </label>
-            </div>
-          </fieldset>
 
           <div className="field-row">
             <label className="field">
@@ -166,7 +189,11 @@ export function RouteSetupPage() {
             </label>
           </div>
 
-          <button type="submit" className="btn btn-primary" disabled={contacts.length === 0}>
+          <button
+            type="submit"
+            className="btn btn-primary"
+            disabled={contacts.length === 0 || !origin || !destination}
+          >
             이동 시작
           </button>
         </form>

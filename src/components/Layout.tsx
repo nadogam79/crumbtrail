@@ -1,4 +1,4 @@
-import { NavLink, Outlet } from 'react-router-dom'
+import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useTracking } from '../context/TrackingContext'
 
 const NAV_ITEMS = [
@@ -10,6 +10,8 @@ const NAV_ITEMS = [
 
 export function Layout() {
   const { status } = useTracking()
+  const { pathname } = useLocation()
+  const inMessenger = pathname.startsWith('/messenger')
 
   return (
     <div className="app-shell">
@@ -40,11 +42,11 @@ export function Layout() {
         <Outlet />
       </main>
       <NavLink
-        to="/messenger"
-        className={({ isActive }) => (isActive ? 'messenger-fab active' : 'messenger-fab')}
-        aria-label="메신저"
+        to={inMessenger ? '/tracking' : '/messenger'}
+        className="messenger-fab"
+        aria-label={inMessenger ? '이동 중 지도' : '메신저'}
       >
-        💬
+        {inMessenger ? '🗺️' : '💬'}
       </NavLink>
     </div>
   )

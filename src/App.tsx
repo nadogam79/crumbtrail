@@ -5,6 +5,8 @@ import { RouteSetupPage } from './pages/RouteSetupPage'
 import { TrackingPage } from './pages/TrackingPage'
 import { ContactsPage } from './pages/ContactsPage'
 import { AlertPage } from './pages/AlertPage'
+import { MessengerPage } from './pages/MessengerPage'
+import { ChatPage } from './pages/ChatPage'
 import './App.css'
 
 function App() {
@@ -16,6 +18,8 @@ function App() {
         <Route path="tracking" element={<TrackingPage />} />
         <Route path="contacts" element={<ContactsPage />} />
         <Route path="alert" element={<AlertPage />} />
+        <Route path="messenger" element={<MessengerPage />} />
+        <Route path="messenger/:friendId" element={<ChatPage />} />
       </Route>
     </Routes>
   )

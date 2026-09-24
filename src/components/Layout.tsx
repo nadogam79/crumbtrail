@@ -39,6 +39,13 @@ export function Layout() {
       <main className="app-main">
         <Outlet />
       </main>
+      <NavLink
+        to="/messenger"
+        className={({ isActive }) => (isActive ? 'messenger-fab active' : 'messenger-fab')}
+        aria-label="메신저"
+      >
+        💬
+      </NavLink>
     </div>
   )
 }

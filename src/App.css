@@ -404,3 +404,77 @@
 .resolve-btn {
   align-self: flex-start;
 }
+
+.messenger-fab {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 56px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--accent);
+  font-size: 26px;
+  text-decoration: none;
+  box-shadow: var(--shadow);
+  z-index: 10;
+}
+
+.messenger-fab.active {
+  outline: 3px solid var(--accent-bg);
+}
+
+.app-main {
+  padding-bottom: 96px;
+}
+
+.map-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 220px;
+  border: 2px dashed var(--border);
+  border-radius: 12px;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.friend-link {
+  justify-content: flex-start;
+  color: var(--text-h);
+  text-decoration: none;
+}
+
+.friend-link:hover {
+  background: var(--code-bg);
+}
+
+.friend-avatar {
+  position: relative;
+  font-size: 28px;
+  line-height: 1;
+}
+
+.friend-online {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #16a34a;
+  border: 2px solid var(--bg);
+}
+
+.friend-info {
+  min-width: 0;
+}
+
+.friend-info .contact-phone {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

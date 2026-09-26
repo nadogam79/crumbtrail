@@ -218,22 +218,6 @@
   flex-wrap: wrap;
 }
 
-.field-group {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.field-group legend {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-h);
-  padding: 0 4px;
-}
-
 .contact-list {
   list-style: none;
   padding: 0;
@@ -285,42 +269,51 @@
   color: #16a34a;
 }
 
-.debug-card {
-  border-style: dashed;
-}
-
-.breadcrumb-trail {
+.route-map {
   width: 100%;
-  max-width: 320px;
-  aspect-ratio: 1;
-  display: block;
-  margin: 0 auto;
+  height: 320px;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--border);
 }
 
-.trail-planned {
-  stroke: var(--border);
-  stroke-width: 2;
-  stroke-dasharray: 4 4;
+.kakao-pin {
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: var(--shadow);
 }
 
-.trail-actual {
-  fill: none;
-  stroke: var(--accent);
-  stroke-width: 2;
+.kakao-pin-origin {
+  background: var(--text-h);
+  color: var(--bg);
 }
 
-.trail-origin {
-  fill: var(--text);
+.kakao-pin-destination {
+  background: #16a34a;
+  color: white;
 }
 
-.trail-destination {
-  fill: #16a34a;
+.kakao-pin-current {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg);
+  box-shadow: var(--shadow);
 }
 
-.trail-current {
-  fill: var(--accent);
-  stroke: var(--bg);
-  stroke-width: 2;
+.kakao-crumb {
+  font-size: 16px;
+  transform: translateY(4px);
+}
+
+.map-hint {
+  font-size: 13px;
+  color: var(--text);
+  margin: 0;
 }
 
 .trail-current-coord {
@@ -410,4 +403,78 @@
 
 .resolve-btn {
   align-self: flex-start;
+}
+
+.messenger-fab {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 56px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--accent);
+  font-size: 26px;
+  text-decoration: none;
+  box-shadow: var(--shadow);
+  z-index: 10;
+}
+
+.messenger-fab.active {
+  outline: 3px solid var(--accent-bg);
+}
+
+.app-main {
+  padding-bottom: 96px;
+}
+
+.map-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 220px;
+  border: 2px dashed var(--border);
+  border-radius: 12px;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.friend-link {
+  justify-content: flex-start;
+  color: var(--text-h);
+  text-decoration: none;
+}
+
+.friend-link:hover {
+  background: var(--code-bg);
+}
+
+.friend-avatar {
+  position: relative;
+  font-size: 28px;
+  line-height: 1;
+}
+
+.friend-online {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #16a34a;
+  border: 2px solid var(--bg);
+}
+
+.friend-info {
+  min-width: 0;
+}
+
+.friend-info .contact-phone {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }

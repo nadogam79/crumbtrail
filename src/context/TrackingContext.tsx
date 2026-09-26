@@ -16,15 +16,9 @@ import type {
   RouteSettings,
   SessionStatus,
 } from '../types'
-import { distanceMeters, distanceToRouteMeters, interpolate } from '../lib/geo'
+import { distanceMeters, distanceToRouteMeters } from '../lib/geo'
 
-// 1 tick = 2 real seconds = 1 simulated minute, so minute-based thresholds
-// (check-in interval, stillness, ETA) can be demoed in seconds without a live GPS feed.
-const TICK_MS = 2000
-const SIM_MINUTES_PER_TICK = 1
 const STILL_EPSILON_METERS = 5
-
-export type MovementMode = 'normal' | 'deviating' | 'stopped'
 
 interface TrackingState {
   status: SessionStatus
@@ -32,7 +26,6 @@ interface TrackingState {
   simMinutesElapsed: number
   breadcrumbs: Breadcrumb[]
   lastCheckInMinute: number | null
-  movementMode: MovementMode
   alert: AlertInfo | null
   contacts: Contact[]
   messages: ChatMessage[]
@@ -45,7 +38,6 @@ type Action =
   | { type: 'START_ROUTE'; route: RouteSettings }
   | { type: 'ADD_BREADCRUMB'; breadcrumb: Breadcrumb; simMinutesElapsed: number }
   | { type: 'CHECK_IN' }
-  | { type: 'SET_MOVEMENT_MODE'; mode: MovementMode }
   | { type: 'TRIGGER_ALERT'; alert: AlertInfo }
   | { type: 'ADD_MESSAGE'; message: ChatMessage }
   | { type: 'RESOLVE_ALERT' }
@@ -57,7 +49,6 @@ const initialState: TrackingState = {
   simMinutesElapsed: 0,
   breadcrumbs: [],
   lastCheckInMinute: null,
-  movementMode: 'normal',
   alert: null,
   contacts: [],
   messages: [],
@@ -92,7 +83,6 @@ function reducer(state: TrackingState, action: Action): TrackingState {
         simMinutesElapsed: 0,
         breadcrumbs: [{ coord: action.route.origin, timestamp: 0 }],
         lastCheckInMinute: 0,
-        movementMode: 'normal',
         alert: null,
         messages: [
           systemMessage(
@@ -110,8 +100,6 @@ function reducer(state: TrackingState, action: Action): TrackingState {
       }
     case 'CHECK_IN':
       return { ...state, lastCheckInMinute: state.simMinutesElapsed }
-    case 'SET_MOVEMENT_MODE':
-      return { ...state, movementMode: action.mode }
     case 'TRIGGER_ALERT':
       return {
         ...state,
@@ -145,7 +133,6 @@ function reducer(state: TrackingState, action: Action): TrackingState {
         simMinutesElapsed: 0,
         breadcrumbs: [],
         lastCheckInMinute: null,
-        movementMode: 'normal',
         alert: null,
         messages: [],
       }
@@ -162,7 +149,6 @@ interface TrackingContextValue extends TrackingState {
   removeContact: (id: string) => void
   startRoute: (route: RouteSettings) => void
   checkIn: () => void
-  setMovementMode: (mode: MovementMode) => void
   postMessage: (text: string, meta?: { author: string; authorLabel: string }) => void
   resolveAlert: () => void
   resetSession: () => void
@@ -194,98 +180,91 @@ export function TrackingProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(CONTACTS_STORAGE_KEY, JSON.stringify(state.contacts))
   }, [state.contacts])
 
-  // Deadman-switch engine: every tick, advance the simulated position and
-  // evaluate the four anomaly conditions from CLAUDE.md against it.
+  // Deadman-switch engine: on every real GPS fix, record it as a breadcrumb and
+  // evaluate the four anomaly conditions from CLAUDE.md against real elapsed time.
   useEffect(() => {
     if (state.status !== 'active') return
+    if (!navigator.geolocation) return
 
-    const interval = setInterval(() => {
-      const current = stateRef.current
-      const route = current.route
-      if (!route || current.status !== 'active') return
+    const startedAt = Date.now()
+    let lastMovedAtMinute = 0
 
-      const elapsed = current.simMinutesElapsed + SIM_MINUTES_PER_TICK
-      const progress = Math.min(1, elapsed / route.etaMinutes)
-      const base = interpolate(route.origin, route.destination, progress)
-      const lastCoord = current.breadcrumbs[current.breadcrumbs.length - 1].coord
+    const watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        const current = stateRef.current
+        const route = current.route
+        if (!route || current.status !== 'active') return
 
-      let coord = base
-      if (current.movementMode === 'stopped') {
-        coord = lastCoord
-      } else if (current.movementMode === 'deviating') {
-        coord = { lat: base.lat + 0.004, lng: base.lng + 0.004 }
-      }
+        const coord = { lat: pos.coords.latitude, lng: pos.coords.longitude }
+        const elapsed = (Date.now() - startedAt) / 60000
+        const lastCoord = current.breadcrumbs[current.breadcrumbs.length - 1].coord
 
-      dispatch({
-        type: 'ADD_BREADCRUMB',
-        breadcrumb: { coord, timestamp: elapsed },
-        simMinutesElapsed: elapsed,
-      })
-
-      let stillMinutes = distanceMeters(coord, lastCoord) < STILL_EPSILON_METERS ? SIM_MINUTES_PER_TICK : 0
-      if (stillMinutes > 0) {
-        for (let i = current.breadcrumbs.length - 1; i >= 1; i--) {
-          const a = current.breadcrumbs[i].coord
-          const b = current.breadcrumbs[i - 1].coord
-          if (distanceMeters(a, b) < STILL_EPSILON_METERS) {
-            stillMinutes += SIM_MINUTES_PER_TICK
-          } else {
-            break
-          }
+        if (distanceMeters(coord, lastCoord) >= STILL_EPSILON_METERS) {
+          lastMovedAtMinute = elapsed
         }
-      }
 
-      const deviationM = distanceToRouteMeters(coord, route.origin, route.destination)
-
-      if (deviationM > route.deviationThresholdMeters) {
         dispatch({
-          type: 'TRIGGER_ALERT',
-          alert: {
-            reason: 'deviation',
-            triggeredAt: elapsed,
-            message: `경로에서 약 ${Math.round(deviationM)}m 벗어났어요. 등록된 지인에게 알림을 보냈어요.`,
-          },
+          type: 'ADD_BREADCRUMB',
+          breadcrumb: { coord, timestamp: elapsed },
+          simMinutesElapsed: elapsed,
         })
-        return
-      }
 
-      if (stillMinutes >= route.stillnessThresholdMinutes) {
-        dispatch({
-          type: 'TRIGGER_ALERT',
-          alert: {
-            reason: 'stillness',
-            triggeredAt: elapsed,
-            message: `${route.stillnessThresholdMinutes}분 이상 위치 신호가 멈췄어요. 등록된 지인에게 알림을 보냈어요.`,
-          },
-        })
-        return
-      }
+        const deviationM = distanceToRouteMeters(coord, route.origin, route.destination)
 
-      if (elapsed - (current.lastCheckInMinute ?? 0) >= route.checkInIntervalMinutes) {
-        dispatch({
-          type: 'TRIGGER_ALERT',
-          alert: {
-            reason: 'missed-checkin',
-            triggeredAt: elapsed,
-            message: `${route.checkInIntervalMinutes}분 동안 체크인이 없었어요. 등록된 지인에게 알림을 보냈어요.`,
-          },
-        })
-        return
-      }
+        if (deviationM > route.deviationThresholdMeters) {
+          dispatch({
+            type: 'TRIGGER_ALERT',
+            alert: {
+              reason: 'deviation',
+              triggeredAt: elapsed,
+              message: `경로에서 약 ${Math.round(deviationM)}m 벗어났어요. 등록된 지인에게 알림을 보냈어요.`,
+            },
+          })
+          return
+        }
 
-      if (elapsed > route.etaMinutes + route.stillnessThresholdMinutes) {
-        dispatch({
-          type: 'TRIGGER_ALERT',
-          alert: {
-            reason: 'overdue',
-            triggeredAt: elapsed,
-            message: `예상 도착 시간(${route.etaMinutes}분)이 지났는데 도착 신호가 없어요. 등록된 지인에게 알림을 보냈어요.`,
-          },
-        })
-      }
-    }, TICK_MS)
+        const stillMinutes = elapsed - lastMovedAtMinute
 
-    return () => clearInterval(interval)
+        if (stillMinutes >= route.stillnessThresholdMinutes) {
+          dispatch({
+            type: 'TRIGGER_ALERT',
+            alert: {
+              reason: 'stillness',
+              triggeredAt: elapsed,
+              message: `${route.stillnessThresholdMinutes}분 이상 위치 신호가 멈췄어요. 등록된 지인에게 알림을 보냈어요.`,
+            },
+          })
+          return
+        }
+
+        if (elapsed - (current.lastCheckInMinute ?? 0) >= route.checkInIntervalMinutes) {
+          dispatch({
+            type: 'TRIGGER_ALERT',
+            alert: {
+              reason: 'missed-checkin',
+              triggeredAt: elapsed,
+              message: `${route.checkInIntervalMinutes}분 동안 체크인이 없었어요. 등록된 지인에게 알림을 보냈어요.`,
+            },
+          })
+          return
+        }
+
+        if (elapsed > route.etaMinutes + route.stillnessThresholdMinutes) {
+          dispatch({
+            type: 'TRIGGER_ALERT',
+            alert: {
+              reason: 'overdue',
+              triggeredAt: elapsed,
+              message: `예상 도착 시간(${route.etaMinutes}분)이 지났는데 도착 신호가 없어요. 등록된 지인에게 알림을 보냈어요.`,
+            },
+          })
+        }
+      },
+      undefined,
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 },
+    )
+
+    return () => navigator.geolocation.clearWatch(watchId)
   }, [state.status])
 
   const addContact = useCallback((contact: Omit<Contact, 'id'>) => {
@@ -306,10 +285,6 @@ export function TrackingProvider({ children }: { children: ReactNode }) {
 
   const checkIn = useCallback(() => {
     dispatch({ type: 'CHECK_IN' })
-  }, [])
-
-  const setMovementMode = useCallback((mode: MovementMode) => {
-    dispatch({ type: 'SET_MOVEMENT_MODE', mode })
   }, [])
 
   const postMessage = useCallback((text: string, meta?: { author: string; authorLabel: string }) => {
@@ -341,12 +316,11 @@ export function TrackingProvider({ children }: { children: ReactNode }) {
       removeContact,
       startRoute,
       checkIn,
-      setMovementMode,
       postMessage,
       resolveAlert,
       resetSession,
     }),
-    [state, addContact, updateContact, removeContact, startRoute, checkIn, setMovementMode, postMessage, resolveAlert, resetSession],
+    [state, addContact, updateContact, removeContact, startRoute, checkIn, postMessage, resolveAlert, resetSession],
   )
 
   return <TrackingContext.Provider value={value}>{children}</TrackingContext.Provider>

@@ -74,7 +74,7 @@ export function AlertPage() {
         </div>
         {alert && (
           <p className="warning-text">
-            {ALERT_REASON_LABEL[alert.reason]} · T+{alert.triggeredAt}분에 감지됨
+            {ALERT_REASON_LABEL[alert.reason]} · T+{Math.round(alert.triggeredAt)}분에 감지됨
           </p>
         )}
         {route && lastBreadcrumb && (

@@ -54,3 +54,18 @@ export function interpolate(a: Coordinate, b: Coordinate, t: number): Coordinate
     lng: a.lng + (b.lng - a.lng) * t,
   }
 }
+
+// Auto-generates evenly spaced "breadcrumb" checkpoints between origin and
+// destination (excluding both endpoints, which are marked separately).
+export function generateCheckpoints(
+  origin: Coordinate,
+  destination: Coordinate,
+  intervalMeters = 200,
+): Coordinate[] {
+  const count = Math.round(distanceMeters(origin, destination) / intervalMeters)
+  const checkpoints: Coordinate[] = []
+  for (let i = 1; i < count; i++) {
+    checkpoints.push(interpolate(origin, destination, i / count))
+  }
+  return checkpoints
+}

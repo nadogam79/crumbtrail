@@ -41,7 +41,12 @@ export function TrackingPage() {
 
       <section className="card">
         <h2>이동 경로</h2>
-        <RouteMap origin={route.origin} destination={route.destination} current={current?.coord ?? null} />
+        <RouteMap
+          origin={route.origin}
+          destination={route.destination}
+          current={current?.coord ?? null}
+          legs={route.legs}
+        />
         {current && (
           <p className="trail-current-coord">
             현재 위치 ({current.coord.lat.toFixed(4)}, {current.coord.lng.toFixed(4)}) · T+{Math.round(current.timestamp)}분

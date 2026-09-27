@@ -3,7 +3,8 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useTracking } from '../context/TrackingContext'
 import { RouteMap } from '../components/RouteMap'
 import { loadKakaoMaps } from '../lib/kakaoMaps'
-import type { Coordinate } from '../types'
+import { fetchRoute } from '../lib/routing'
+import type { Coordinate, RouteResult } from '../types'
 
 export function RouteSetupPage() {
   const { contacts, startRoute } = useTracking()
@@ -16,6 +17,10 @@ export function RouteSetupPage() {
   const [locationError, setLocationError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchError, setSearchError] = useState<string | null>(null)
+
+  const [route, setRoute] = useState<RouteResult | null>(null)
+  const [routing, setRouting] = useState(false)
+  const [routingError, setRoutingError] = useState<string | null>(null)
 
   const [etaMinutes, setEtaMinutes] = useState(15)
   const [checkInIntervalMinutes, setCheckInIntervalMinutes] = useState(10)
@@ -49,6 +54,33 @@ export function RouteSetupPage() {
   const handleDestinationChange = useCallback((coord: Coordinate) => {
     setDestination(coord)
   }, [])
+
+  // 출발/목적지가 정해지면(지도 클릭이든 검색이든) 잠깐 기다렸다가 실제 보행+대중교통
+  // 경로를 한 번 조회한다. 클릭마다 바로 쏘면 미세 조정 중에도 계속 호출되므로 디바운스.
+  useEffect(() => {
+    if (!origin || !destination) {
+      setRoute(null)
+      return
+    }
+
+    setRoute(null)
+    setRoutingError(null)
+    setRouting(true)
+
+    const timer = setTimeout(() => {
+      fetchRoute(origin, destination)
+        .then((result) => {
+          setRoute(result)
+          setEtaMinutes(Math.max(1, Math.round(result.totalMinutes)))
+        })
+        .catch((err) => {
+          setRoutingError(err instanceof Error ? err.message : '경로를 불러오지 못했어요.')
+        })
+        .finally(() => setRouting(false))
+    }, 500)
+
+    return () => clearTimeout(timer)
+  }, [origin, destination])
 
   const runSearch = async () => {
     if (!searchQuery.trim()) return
@@ -88,6 +120,7 @@ export function RouteSetupPage() {
       checkInIntervalMinutes,
       deviationThresholdMeters,
       stillnessThresholdMinutes,
+      legs: route?.legs,
     })
     navigate('/tracking')
   }
@@ -131,7 +164,25 @@ export function RouteSetupPage() {
           </p>
           {locationError && <p className="warning-text">{locationError}</p>}
 
-          <RouteMap origin={origin} destination={destination} onDestinationChange={handleDestinationChange} />
+          <RouteMap
+            origin={origin}
+            destination={destination}
+            legs={route?.legs}
+            onDestinationChange={handleDestinationChange}
+          />
+
+          {routing && <p className="map-hint">실제 보행+대중교통 경로를 조회하는 중…</p>}
+          {routingError && (
+            <p className="warning-text">
+              {routingError} 직선 거리 기준으로만 이탈을 감지해요.
+            </p>
+          )}
+          {route && !routing && (
+            <p className="map-hint">
+              예상 경로: 약 {Math.round(route.totalDistanceMeters)}m · {Math.round(route.totalMinutes)}분
+              {route.legs.some((l) => l.mode !== 'WALK') ? ' (대중교통 포함)' : ' (도보)'}
+            </p>
+          )}
 
           <button type="button" className="btn btn-secondary" onClick={refreshCurrentLocation} disabled={locating}>
             내 위치 새로고침

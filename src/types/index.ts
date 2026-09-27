@@ -15,6 +15,22 @@ export interface Breadcrumb {
   timestamp: number
 }
 
+export type TransitMode = 'WALK' | 'BUS' | 'SUBWAY'
+
+export interface RouteLeg {
+  mode: TransitMode
+  label?: string // 버스 노선명/지하철 호선명 등
+  path: Coordinate[]
+  distanceMeters: number
+  minutes: number
+}
+
+export interface RouteResult {
+  legs: RouteLeg[]
+  totalDistanceMeters: number
+  totalMinutes: number
+}
+
 export interface RouteSettings {
   destinationLabel: string
   origin: Coordinate
@@ -23,6 +39,9 @@ export interface RouteSettings {
   checkInIntervalMinutes: number
   deviationThresholdMeters: number
   stillnessThresholdMinutes: number
+  // 실제 경로(보행/대중교통) 조회 결과. 조회 실패 시 없을 수 있고,
+  // 그 경우 origin-destination 직선을 기준으로 이탈을 판정한다(폴백).
+  legs?: RouteLeg[]
 }
 
 export type AlertReason = 'deviation' | 'stillness' | 'overdue' | 'missed-checkin'

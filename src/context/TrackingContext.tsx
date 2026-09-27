@@ -16,7 +16,7 @@ import type {
   RouteSettings,
   SessionStatus,
 } from '../types'
-import { distanceMeters, distanceToRouteMeters } from '../lib/geo'
+import { distanceMeters, distanceToPolylineMeters, distanceToRouteMeters } from '../lib/geo'
 
 const STILL_EPSILON_METERS = 5
 
@@ -209,7 +209,11 @@ export function TrackingProvider({ children }: { children: ReactNode }) {
           simMinutesElapsed: elapsed,
         })
 
-        const deviationM = distanceToRouteMeters(coord, route.origin, route.destination)
+        const fullPath = route.legs?.flatMap((leg) => leg.path) ?? []
+        const deviationM =
+          fullPath.length > 1
+            ? distanceToPolylineMeters(coord, fullPath)
+            : distanceToRouteMeters(coord, route.origin, route.destination)
 
         if (deviationM > route.deviationThresholdMeters) {
           dispatch({

@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useState, type FormEvent, type KeyboardEvent } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { useTracking } from '../context/TrackingContext'
 import { RouteMap } from '../components/RouteMap'
 import { loadKakaoMaps } from '../lib/kakaoMaps'
 import { fetchRoute } from '../lib/routing'
 import type { Coordinate, RouteResult } from '../types'
 
-export function RouteSetupPage() {
+interface RouteSetupPageProps {
+  onStarted: () => void
+}
+
+export function RouteSetupPage({ onStarted }: RouteSetupPageProps) {
   const { contacts, startRoute } = useTracking()
-  const navigate = useNavigate()
 
   const [destinationLabel, setDestinationLabel] = useState('집')
   const [origin, setOrigin] = useState<Coordinate | null>(null)
@@ -122,7 +125,7 @@ export function RouteSetupPage() {
       stillnessThresholdMinutes,
       legs: route?.legs,
     })
-    navigate('/tracking')
+    onStarted()
   }
 
   return (
@@ -133,7 +136,11 @@ export function RouteSetupPage() {
 
         {contacts.length === 0 && (
           <p className="warning-text">
-            알림을 받을 지인이 없어요. <Link to="/contacts">지인을 먼저 등록</Link>해주세요.
+            알림을 받을 지인이 없어요.{' '}
+            <Link to="/messenger" state={{ segment: 'contacts' }}>
+              지인을 먼저 등록
+            </Link>
+            해주세요.
           </p>
         )}
 

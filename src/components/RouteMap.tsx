@@ -9,6 +9,7 @@ interface RouteMapProps {
   current?: Coordinate | null
   legs?: RouteLeg[] | null
   onDestinationChange?: (coord: Coordinate) => void
+  className?: string
 }
 
 const DEFAULT_CENTER: Coordinate = { lat: 37.5665, lng: 126.978 } // 서울시청 (지도 초기값)
@@ -19,7 +20,14 @@ const LEG_STYLE: Record<TransitMode, { color: string; style: string }> = {
   SUBWAY: { color: '#16a34a', style: 'solid' },
 }
 
-export function RouteMap({ origin, destination, current, legs, onDestinationChange }: RouteMapProps) {
+export function RouteMap({
+  origin,
+  destination,
+  current,
+  legs,
+  onDestinationChange,
+  className = 'route-map',
+}: RouteMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<any>(null)
   const routeOverlaysRef = useRef<any[]>([])
@@ -177,5 +185,5 @@ export function RouteMap({ origin, destination, current, legs, onDestinationChan
     return <p className="warning-text">{error}</p>
   }
 
-  return <div ref={containerRef} className="route-map" />
+  return <div ref={containerRef} className={className} />
 }

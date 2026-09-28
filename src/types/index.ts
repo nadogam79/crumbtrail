@@ -19,6 +19,8 @@ export interface RouteLeg {
 }
 
 export interface RouteResult {
+  // transit: 대중교통 경로, pedestrian: 가까운 거리 등으로 대중교통 경로가 없어 도보 경로로 대체
+  source?: 'transit' | 'pedestrian'
   legs: RouteLeg[]
   totalDistanceMeters: number
   totalMinutes: number

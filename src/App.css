@@ -450,6 +450,192 @@
   margin-bottom: 10px;
 }
 
+/* ── 목적지 설정 시트 ──────────────────────────────── */
+
+.sheet {
+  display: flex;
+  flex-direction: column;
+}
+
+.sheet-head {
+  padding: 20px 20px 0;
+}
+
+.sheet-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 20px 0;
+}
+
+.sheet-footer {
+  position: sticky;
+  bottom: 0;
+  margin-top: 16px;
+  padding: 12px 20px calc(12px + env(safe-area-inset-bottom));
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+}
+
+.sheet-cta {
+  width: 100%;
+  padding: 13px 16px;
+  font-size: 16px;
+}
+
+.place-list {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.place-list li + li {
+  border-top: 1px solid var(--border);
+}
+
+.place-row {
+  width: 100%;
+  border: none;
+  background: var(--bg);
+  text-align: left;
+  cursor: pointer;
+  padding: 10px 14px;
+}
+
+.place-row:hover {
+  background: var(--surface);
+}
+
+.map-wrap {
+  position: relative;
+}
+
+.map-wrap .route-map {
+  height: 220px;
+}
+
+.map-locate-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text-h);
+  box-shadow: var(--shadow);
+  cursor: pointer;
+}
+
+.map-locate-btn:disabled {
+  color: var(--text-sub);
+  cursor: wait;
+}
+
+.route-summary {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: var(--surface);
+  font-size: 14px;
+  color: var(--text);
+}
+
+.route-summary strong {
+  font-size: 16px;
+  color: var(--text-h);
+}
+
+.route-summary-warn {
+  color: #b45309;
+  font-size: 13px;
+  line-height: 155%;
+}
+
+.route-summary .btn-text {
+  padding: 2px 0;
+  color: var(--accent);
+}
+
+.advanced {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.advanced summary {
+  padding: 12px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-h);
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  justify-content: space-between;
+}
+
+.advanced summary::-webkit-details-marker {
+  display: none;
+}
+
+.advanced summary::after {
+  content: '▾';
+  color: var(--text-sub);
+  transition: transform 0.2s;
+}
+
+.advanced[open] summary::after {
+  transform: rotate(180deg);
+}
+
+.advanced .form {
+  padding: 0 14px 14px;
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 14px;
+  color: var(--text-h);
+}
+
+.setting-input {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  color: var(--text-sub);
+}
+
+.setting-input input {
+  width: 72px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 15px;
+  text-align: right;
+  color: var(--text-h);
+  outline: none;
+}
+
+.setting-input input:focus {
+  border-color: var(--accent);
+}
+
+.field small {
+  font-size: 12px;
+  color: var(--text-sub);
+}
+
 /* ── 사용 가이드 (카드 슬라이드) ──────────────────── */
 
 .guide {

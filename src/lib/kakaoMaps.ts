@@ -11,8 +11,10 @@ let loadPromise: Promise<any> | null = null
 // Loads the Kakao Maps JavaScript API once and resolves with the global `kakao`
 // object after `kakao.maps.load` fires (autoload=false avoids a render race on init).
 export function loadKakaoMaps(): Promise<any> {
-  if (window.kakao?.maps) return Promise.resolve(window.kakao)
+  // 진행 중인 로딩을 먼저 기다린다: 스크립트 onload 직후 kakao.maps.load 콜백 전까지는
+  // window.kakao.maps가 있어도 LatLng 등이 아직 없어서 바로 쓰면 깨진다.
   if (loadPromise) return loadPromise
+  if (window.kakao?.maps?.LatLng) return Promise.resolve(window.kakao)
 
   const appkey = import.meta.env.VITE_KAKAO_JS_KEY
   if (!appkey) {

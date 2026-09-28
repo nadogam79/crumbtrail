@@ -121,7 +121,7 @@ export function MapPage() {
       {guideOpen && <GuideModal onClose={() => setGuideOpen(false)} />}
 
       {modalOpen && (
-        <Modal onClose={() => setModalOpen(false)}>
+        <Modal onClose={() => setModalOpen(false)} compact>
           <RouteSetupPage onStarted={() => setModalOpen(false)} />
         </Modal>
       )}

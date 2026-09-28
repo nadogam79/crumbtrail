@@ -8,7 +8,6 @@ interface RouteMapProps {
   destination: Coordinate | null
   current?: Coordinate | null
   legs?: RouteLeg[] | null
-  onDestinationChange?: (coord: Coordinate) => void
   className?: string
 }
 
@@ -25,7 +24,6 @@ export function RouteMap({
   destination,
   current,
   legs,
-  onDestinationChange,
   className = 'route-map',
 }: RouteMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -54,17 +52,6 @@ export function RouteMap({
     // Map is created once; origin changes afterwards just recenter via the overlay effect below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-
-  useEffect(() => {
-    if (!mapReady || !onDestinationChange) return
-    const kakao = window.kakao
-    const map = mapRef.current
-    const handleClick = (e: any) => {
-      onDestinationChange({ lat: e.latLng.getLat(), lng: e.latLng.getLng() })
-    }
-    kakao.maps.event.addListener(map, 'click', handleClick)
-    return () => kakao.maps.event.removeListener(map, 'click', handleClick)
-  }, [mapReady, onDestinationChange])
 
   useEffect(() => {
     if (!mapReady) return

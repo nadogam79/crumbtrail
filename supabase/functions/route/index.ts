@@ -9,6 +9,10 @@
 // Call from the frontend as:
 //   GET {SUPABASE_URL}/functions/v1/route?fromLat=..&fromLng=..&toLat=..&toLng=..
 //
+// 대중교통 경로가 없으면(출발/도착이 너무 가까운 경우 등) Tmap 보행자 경로 API로 대체한다.
+// 대중교통 조회가 한도 초과 등으로 실패해도 직선 2km 이내면 보행자 경로를 시도한다.
+// 둘 다 안 되면 에러를 돌려주고, 프론트는 직선거리 추정으로 폴백한다.
+//
 // NOTE: field names below (sectionTime, distance, totalTime, totalDistance) follow
 // Tmap's docs at https://transit.tmapmobility.com/docs/routes. sectionTime/totalTime
 // are in seconds (verified against a live response — resulting walk/bus speeds came
@@ -88,6 +92,72 @@ function buildLegs(
   return rawLegs
 }
 
+// 대중교통 실패 시에도 이 거리 이내면 걸어가는 게 현실적이므로 보행자 경로를 시도한다
+const PEDESTRIAN_FALLBACK_MAX_METERS = 2000
+
+function straightDistanceMeters(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
+  const R = 6371000
+  const toRad = (d: number) => (d * Math.PI) / 180
+  const dLat = toRad(b.lat - a.lat)
+  const dLng = toRad(b.lng - a.lng)
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2
+  return 2 * R * Math.asin(Math.sqrt(h))
+}
+
+interface PedestrianFeature {
+  geometry: { type: string; coordinates: number[] | number[][] }
+  properties: { totalDistance?: number; totalTime?: number }
+}
+
+// Tmap 보행자 경로: GeoJSON FeatureCollection. 첫 Point feature에 totalDistance(m)/totalTime(초)가 있고,
+// LineString feature들의 좌표를 이으면 인도를 따라가는 경로가 된다.
+async function fetchPedestrianRoute(
+  appKey: string,
+  origin: { lat: number; lng: number },
+  destination: { lat: number; lng: number },
+) {
+  const res = await fetch('https://apis.openapi.sk.com/tmap/routes/pedestrian?version=1', {
+    method: 'POST',
+    headers: { appKey, 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify({
+      startX: origin.lng,
+      startY: origin.lat,
+      endX: destination.lng,
+      endY: destination.lat,
+      startName: '출발',
+      endName: '도착',
+      reqCoordType: 'WGS84GEO',
+      resCoordType: 'WGS84GEO',
+    }),
+  })
+  const json = await res.json()
+  const features: PedestrianFeature[] = json?.features ?? []
+  if (!res.ok || features.length === 0) {
+    throw new Error(json?.error?.message ?? '보행자 경로를 찾지 못했어요.')
+  }
+
+  const path = features
+    .filter((f) => f.geometry.type === 'LineString')
+    .flatMap((f) => (f.geometry.coordinates as number[][]).map(([lng, lat]) => ({ lat, lng })))
+  const summary = features[0].properties
+  const distanceMeters = summary.totalDistance ?? straightDistanceMeters(origin, destination)
+  const minutes = (summary.totalTime ?? 0) / 60
+
+  return {
+    source: 'pedestrian' as const,
+    legs: [{ mode: 'WALK' as TransitMode, path: path.length > 1 ? path : [origin, destination], distanceMeters, minutes }],
+    totalDistanceMeters: distanceMeters,
+    totalMinutes: minutes,
+  }
+}
+
+function json(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+  })
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: CORS_HEADERS })
@@ -115,6 +185,9 @@ Deno.serve(async (req) => {
       })
     }
 
+    const origin = { lat: Number(fromLat), lng: Number(fromLng) }
+    const destination = { lat: Number(toLat), lng: Number(toLng) }
+
     const tmapRes = await fetch('https://apis.openapi.sk.com/transit/routes', {
       method: 'POST',
       headers: { appKey, 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -129,35 +202,30 @@ Deno.serve(async (req) => {
       }),
     })
     const tmapJson = await tmapRes.json()
+    const itineraries: TmapItinerary[] = tmapRes.ok ? (tmapJson?.metaData?.plan?.itineraries ?? []) : []
 
-    if (!tmapRes.ok) {
-      return new Response(JSON.stringify({ error: tmapJson?.error?.message ?? 'Tmap 조회 실패' }), {
-        status: 502,
-        headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
-      })
-    }
-
-    const itineraries: TmapItinerary[] = tmapJson?.metaData?.plan?.itineraries ?? []
     if (itineraries.length === 0) {
-      return new Response(JSON.stringify({ error: '추천 경로를 찾지 못했어요.' }), {
-        status: 404,
-        headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
-      })
+      // 경로 자체가 없으면(가까운 거리 등) 거리와 무관하게, 조회가 실패했으면 가까울 때만 보행자 경로로 대체
+      const transitError = tmapRes.ok ? null : (tmapJson?.error?.message ?? 'Tmap 조회 실패')
+      const shouldTryPedestrian =
+        !transitError || straightDistanceMeters(origin, destination) <= PEDESTRIAN_FALLBACK_MAX_METERS
+      if (shouldTryPedestrian) {
+        try {
+          return json(await fetchPedestrianRoute(appKey, origin, destination))
+        } catch (err) {
+          return json({ error: err instanceof Error ? err.message : '보행자 경로를 찾지 못했어요.' }, 502)
+        }
+      }
+      return json({ error: transitError }, 502)
     }
 
     const itinerary = itineraries[0]
-    const legs = buildLegs(
-      itinerary.legs,
-      { lat: Number(fromLat), lng: Number(fromLng) },
-      { lat: Number(toLat), lng: Number(toLng) },
-    )
+    const legs = buildLegs(itinerary.legs, origin, destination)
 
     const totalDistanceMeters = itinerary.totalDistance ?? legs.reduce((sum, l) => sum + l.distanceMeters, 0)
     const totalMinutes = itinerary.totalTime != null ? itinerary.totalTime / 60 : legs.reduce((sum, l) => sum + l.minutes, 0)
 
-    return new Response(JSON.stringify({ legs, totalDistanceMeters, totalMinutes }), {
-      headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
-    })
+    return json({ source: 'transit', legs, totalDistanceMeters, totalMinutes })
   } catch (err) {
     return new Response(JSON.stringify({ error: err instanceof Error ? err.message : '알 수 없는 오류' }), {
       status: 500,

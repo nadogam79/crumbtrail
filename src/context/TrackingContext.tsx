@@ -6,17 +6,13 @@ import {
   useMemo,
   useReducer,
   useRef,
+  useState,
   type ReactNode,
 } from 'react'
-import type {
-  AlertInfo,
-  Breadcrumb,
-  ChatMessage,
-  Contact,
-  RouteSettings,
-  SessionStatus,
-} from '../types'
+import type { AlertInfo, AlertReason, Breadcrumb, Coordinate, RouteSettings, SessionStatus } from '../types'
+import { ALERT_REASON_LABEL } from '../types'
 import { distanceMeters, distanceToPolylineMeters, distanceToRouteMeters } from '../lib/geo'
+import { sendAutoAlert } from '../lib/messenger'
 
 const STILL_EPSILON_METERS = 5
 
@@ -27,19 +23,19 @@ interface TrackingState {
   breadcrumbs: Breadcrumb[]
   lastCheckInMinute: number | null
   alert: AlertInfo | null
-  contacts: Contact[]
-  messages: ChatMessage[]
+}
+
+// 비상 연락망 자동 발송 결과. 지도 탭에서 보낸 여부를 보여주는 데 쓴다.
+export interface DispatchNotice {
+  text: string
+  failed: boolean
 }
 
 type Action =
-  | { type: 'ADD_CONTACT'; contact: Contact }
-  | { type: 'UPDATE_CONTACT'; contact: Contact }
-  | { type: 'REMOVE_CONTACT'; id: string }
   | { type: 'START_ROUTE'; route: RouteSettings }
   | { type: 'ADD_BREADCRUMB'; breadcrumb: Breadcrumb; simMinutesElapsed: number }
   | { type: 'CHECK_IN' }
   | { type: 'TRIGGER_ALERT'; alert: AlertInfo }
-  | { type: 'ADD_MESSAGE'; message: ChatMessage }
   | { type: 'RESOLVE_ALERT' }
   | { type: 'RESET_SESSION' }
 
@@ -50,31 +46,10 @@ const initialState: TrackingState = {
   breadcrumbs: [],
   lastCheckInMinute: null,
   alert: null,
-  contacts: [],
-  messages: [],
-}
-
-function systemMessage(text: string, timestamp: number): ChatMessage {
-  return {
-    id: crypto.randomUUID(),
-    author: 'system',
-    authorLabel: '시스템',
-    text,
-    timestamp,
-  }
 }
 
 function reducer(state: TrackingState, action: Action): TrackingState {
   switch (action.type) {
-    case 'ADD_CONTACT':
-      return { ...state, contacts: [...state.contacts, action.contact] }
-    case 'UPDATE_CONTACT':
-      return {
-        ...state,
-        contacts: state.contacts.map((c) => (c.id === action.contact.id ? action.contact : c)),
-      }
-    case 'REMOVE_CONTACT':
-      return { ...state, contacts: state.contacts.filter((c) => c.id !== action.id) }
     case 'START_ROUTE':
       return {
         ...state,
@@ -84,12 +59,6 @@ function reducer(state: TrackingState, action: Action): TrackingState {
         breadcrumbs: [{ coord: action.route.origin, timestamp: 0 }],
         lastCheckInMinute: 0,
         alert: null,
-        messages: [
-          systemMessage(
-            `${action.route.destinationLabel}(으)로 이동을 시작했어요. 예상 소요 ${action.route.etaMinutes}분.`,
-            0,
-          ),
-        ],
       }
     case 'ADD_BREADCRUMB':
       if (state.status !== 'active') return state
@@ -101,84 +70,49 @@ function reducer(state: TrackingState, action: Action): TrackingState {
     case 'CHECK_IN':
       return { ...state, lastCheckInMinute: state.simMinutesElapsed }
     case 'TRIGGER_ALERT':
-      return {
-        ...state,
-        status: 'alert',
-        alert: action.alert,
-        messages: [...state.messages, systemMessage(action.alert.message, state.simMinutesElapsed)],
-      }
-    case 'ADD_MESSAGE':
-      return { ...state, messages: [...state.messages, action.message] }
+      return { ...state, status: 'alert', alert: action.alert }
     case 'RESOLVE_ALERT':
-      return {
-        ...state,
-        status: 'resolved',
-        messages: [
-          ...state.messages,
-          {
-            id: crypto.randomUUID(),
-            author: 'user',
-            authorLabel: '나',
-            text: '나 괜찮아, 오탐이었어!',
-            timestamp: state.simMinutesElapsed,
-          },
-          systemMessage('상태가 해제되었습니다. 모두에게 알림이 전송되었어요.', state.simMinutesElapsed),
-        ],
-      }
+      return { ...state, status: 'resolved' }
     case 'RESET_SESSION':
-      return {
-        ...state,
-        status: 'idle',
-        route: null,
-        simMinutesElapsed: 0,
-        breadcrumbs: [],
-        lastCheckInMinute: null,
-        alert: null,
-        messages: [],
-      }
+      return initialState
     default:
       return state
   }
 }
 
-const CONTACTS_STORAGE_KEY = 'crumbtrail.contacts'
-
 interface TrackingContextValue extends TrackingState {
-  addContact: (contact: Omit<Contact, 'id'>) => void
-  updateContact: (contact: Contact) => void
-  removeContact: (id: string) => void
+  dispatchNotice: DispatchNotice | null
   startRoute: (route: RouteSettings) => void
   checkIn: () => void
-  postMessage: (text: string, meta?: { author: string; authorLabel: string }) => void
   resolveAlert: () => void
-  resetSession: () => void
+  arrive: () => void
+  stopTracking: () => void
 }
 
 const TrackingContext = createContext<TrackingContextValue | null>(null)
 
-function loadStoredContacts(): Contact[] {
-  try {
-    const raw = localStorage.getItem(CONTACTS_STORAGE_KEY)
-    return raw ? JSON.parse(raw) : []
-  } catch {
-    return []
-  }
-}
-
 export function TrackingProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(reducer, initialState, (init) => ({
-    ...init,
-    contacts: loadStoredContacts(),
-  }))
+  const [state, dispatch] = useReducer(reducer, initialState)
+  const [dispatchNotice, setDispatchNotice] = useState<DispatchNotice | null>(null)
   const stateRef = useRef(state)
 
   useEffect(() => {
     stateRef.current = state
   })
 
-  useEffect(() => {
-    localStorage.setItem(CONTACTS_STORAGE_KEY, JSON.stringify(state.contacts))
-  }, [state.contacts])
+  // 지도 탭 이벤트를 비상 연락망 친구들의 1:1방으로 자동 발송
+  const notify = useCallback(async (label: string, body: string, coord: Coordinate | null) => {
+    try {
+      const count = await sendAutoAlert(body, coord)
+      setDispatchNotice(
+        count > 0
+          ? { text: `${label}: 비상 연락망 ${count}명에게 메시지를 보냈어요.`, failed: false }
+          : { text: `${label}: 비상 연락망으로 지정된 친구가 없어 보내지 못했어요.`, failed: true },
+      )
+    } catch {
+      setDispatchNotice({ text: `${label}: 메시지 전송에 실패했어요. 네트워크를 확인해주세요.`, failed: true })
+    }
+  }, [])
 
   // Deadman-switch engine: on every real GPS fix, record it as a breadcrumb and
   // evaluate the four anomaly conditions from CLAUDE.md against real elapsed time.
@@ -188,12 +122,23 @@ export function TrackingProvider({ children }: { children: ReactNode }) {
 
     const startedAt = Date.now()
     let lastMovedAtMinute = 0
+    // 상태 반영 전에 GPS 콜백이 한 번 더 들어와도 중복 발송하지 않도록
+    let alerted = false
+
+    const triggerAlert = (reason: AlertReason, detail: string, elapsed: number, coord: Coordinate) => {
+      alerted = true
+      dispatch({
+        type: 'TRIGGER_ALERT',
+        alert: { reason, triggeredAt: elapsed, message: `${detail} 비상 연락망에 알림을 보내고 있어요.` },
+      })
+      notify(ALERT_REASON_LABEL[reason], `⚠️ ${ALERT_REASON_LABEL[reason]} 감지: ${detail}`, coord)
+    }
 
     const watchId = navigator.geolocation.watchPosition(
       (pos) => {
         const current = stateRef.current
         const route = current.route
-        if (!route || current.status !== 'active') return
+        if (alerted || !route || current.status !== 'active') return
 
         const coord = { lat: pos.coords.latitude, lng: pos.coords.longitude }
         const elapsed = (Date.now() - startedAt) / 60000
@@ -216,52 +161,29 @@ export function TrackingProvider({ children }: { children: ReactNode }) {
             : distanceToRouteMeters(coord, route.origin, route.destination)
 
         if (deviationM > route.deviationThresholdMeters) {
-          dispatch({
-            type: 'TRIGGER_ALERT',
-            alert: {
-              reason: 'deviation',
-              triggeredAt: elapsed,
-              message: `경로에서 약 ${Math.round(deviationM)}m 벗어났어요. 등록된 지인에게 알림을 보냈어요.`,
-            },
-          })
+          triggerAlert('deviation', `예상 경로에서 약 ${Math.round(deviationM)}m 벗어났어요.`, elapsed, coord)
           return
         }
 
         const stillMinutes = elapsed - lastMovedAtMinute
 
         if (stillMinutes >= route.stillnessThresholdMinutes) {
-          dispatch({
-            type: 'TRIGGER_ALERT',
-            alert: {
-              reason: 'stillness',
-              triggeredAt: elapsed,
-              message: `${route.stillnessThresholdMinutes}분 이상 위치 신호가 멈췄어요. 등록된 지인에게 알림을 보냈어요.`,
-            },
-          })
+          triggerAlert('stillness', `${route.stillnessThresholdMinutes}분 이상 위치가 움직이지 않았어요.`, elapsed, coord)
           return
         }
 
         if (elapsed - (current.lastCheckInMinute ?? 0) >= route.checkInIntervalMinutes) {
-          dispatch({
-            type: 'TRIGGER_ALERT',
-            alert: {
-              reason: 'missed-checkin',
-              triggeredAt: elapsed,
-              message: `${route.checkInIntervalMinutes}분 동안 체크인이 없었어요. 등록된 지인에게 알림을 보냈어요.`,
-            },
-          })
+          triggerAlert('missed-checkin', `${route.checkInIntervalMinutes}분 동안 체크인이 없었어요.`, elapsed, coord)
           return
         }
 
         if (elapsed > route.etaMinutes + route.stillnessThresholdMinutes) {
-          dispatch({
-            type: 'TRIGGER_ALERT',
-            alert: {
-              reason: 'overdue',
-              triggeredAt: elapsed,
-              message: `예상 도착 시간(${route.etaMinutes}분)이 지났는데 도착 신호가 없어요. 등록된 지인에게 알림을 보냈어요.`,
-            },
-          })
+          triggerAlert(
+            'overdue',
+            `예상 도착 시간(${route.etaMinutes}분)이 지났는데 도착하지 않았어요.`,
+            elapsed,
+            coord,
+          )
         }
       },
       undefined,
@@ -269,62 +191,45 @@ export function TrackingProvider({ children }: { children: ReactNode }) {
     )
 
     return () => navigator.geolocation.clearWatch(watchId)
-  }, [state.status])
+  }, [state.status, notify])
 
-  const addContact = useCallback((contact: Omit<Contact, 'id'>) => {
-    dispatch({ type: 'ADD_CONTACT', contact: { ...contact, id: crypto.randomUUID() } })
-  }, [])
+  const lastCoord = () => stateRef.current.breadcrumbs.at(-1)?.coord ?? null
 
-  const updateContact = useCallback((contact: Contact) => {
-    dispatch({ type: 'UPDATE_CONTACT', contact })
-  }, [])
-
-  const removeContact = useCallback((id: string) => {
-    dispatch({ type: 'REMOVE_CONTACT', id })
-  }, [])
-
-  const startRoute = useCallback((route: RouteSettings) => {
-    dispatch({ type: 'START_ROUTE', route })
-  }, [])
+  const startRoute = useCallback(
+    (route: RouteSettings) => {
+      dispatch({ type: 'START_ROUTE', route })
+      notify(
+        '귀가 시작',
+        `🍞 ${route.destinationLabel}(으)로 귀가를 시작했어요. 예상 소요 ${route.etaMinutes}분.`,
+        route.origin,
+      )
+    },
+    [notify],
+  )
 
   const checkIn = useCallback(() => {
     dispatch({ type: 'CHECK_IN' })
   }, [])
 
-  const postMessage = useCallback((text: string, meta?: { author: string; authorLabel: string }) => {
-    dispatch({
-      type: 'ADD_MESSAGE',
-      message: {
-        id: crypto.randomUUID(),
-        author: meta?.author ?? 'user',
-        authorLabel: meta?.authorLabel ?? '나',
-        text,
-        timestamp: stateRef.current.simMinutesElapsed,
-      },
-    })
-  }, [])
-
   const resolveAlert = useCallback(() => {
     dispatch({ type: 'RESOLVE_ALERT' })
-  }, [])
+    notify('오탐 해제', '✅ 괜찮아요, 오탐이었어요. 알림을 해제할게요.', lastCoord())
+  }, [notify])
 
-  const resetSession = useCallback(() => {
+  const arrive = useCallback(() => {
+    const destination = stateRef.current.route?.destinationLabel ?? '목적지'
+    notify('도착', `🏠 ${destination}에 무사히 도착했어요.`, lastCoord())
     dispatch({ type: 'RESET_SESSION' })
-  }, [])
+  }, [notify])
+
+  const stopTracking = useCallback(() => {
+    notify('추적 중단', '⏹ 귀가 추적을 중단했어요.', lastCoord())
+    dispatch({ type: 'RESET_SESSION' })
+  }, [notify])
 
   const value = useMemo<TrackingContextValue>(
-    () => ({
-      ...state,
-      addContact,
-      updateContact,
-      removeContact,
-      startRoute,
-      checkIn,
-      postMessage,
-      resolveAlert,
-      resetSession,
-    }),
-    [state, addContact, updateContact, removeContact, startRoute, checkIn, postMessage, resolveAlert, resetSession],
+    () => ({ ...state, dispatchNotice, startRoute, checkIn, resolveAlert, arrive, stopTracking }),
+    [state, dispatchNotice, startRoute, checkIn, resolveAlert, arrive, stopTracking],
   )
 
   return <TrackingContext.Provider value={value}>{children}</TrackingContext.Provider>

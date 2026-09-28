@@ -4,6 +4,7 @@ import { useTracking } from '../context/TrackingContext'
 import { RouteMap } from '../components/RouteMap'
 import { loadKakaoMaps } from '../lib/kakaoMaps'
 import { fetchRoute } from '../lib/routing'
+import { listFriends } from '../lib/messenger'
 import type { Coordinate, RouteResult } from '../types'
 
 interface RouteSetupPageProps {
@@ -11,7 +12,15 @@ interface RouteSetupPageProps {
 }
 
 export function RouteSetupPage({ onStarted }: RouteSetupPageProps) {
-  const { contacts, startRoute } = useTracking()
+  const { startRoute } = useTracking()
+  // null: 확인 중. 비상 연락망이 없으면 알림이 아무에게도 가지 않으므로 시작을 막는다.
+  const [emergencyCount, setEmergencyCount] = useState<number | null>(null)
+
+  useEffect(() => {
+    listFriends()
+      .then((friends) => setEmergencyCount(friends.filter((f) => f.isEmergency).length))
+      .catch(() => setEmergencyCount(0))
+  }, [])
 
   const [destinationLabel, setDestinationLabel] = useState('집')
   const [origin, setOrigin] = useState<Coordinate | null>(null)
@@ -113,7 +122,7 @@ export function RouteSetupPage({ onStarted }: RouteSetupPageProps) {
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault()
-    if (contacts.length === 0 || !origin || !destination) return
+    if (!emergencyCount || !origin || !destination) return
 
     startRoute({
       destinationLabel,
@@ -134,11 +143,11 @@ export function RouteSetupPage({ onStarted }: RouteSetupPageProps) {
         <h1>경로 설정</h1>
         <p>목적지를 검색하거나 지도를 클릭해서 지정해주세요. 출발 위치는 현재 위치로 자동 설정돼요.</p>
 
-        {contacts.length === 0 && (
+        {emergencyCount === 0 && (
           <p className="warning-text">
-            알림을 받을 지인이 없어요.{' '}
-            <Link to="/messenger" state={{ segment: 'contacts' }}>
-              지인을 먼저 등록
+            알림을 받을 비상 연락망이 없어요.{' '}
+            <Link to="/messenger" state={{ segment: 'friends' }}>
+              친구를 비상 연락망으로 지정
             </Link>
             해주세요.
           </p>
@@ -250,7 +259,7 @@ export function RouteSetupPage({ onStarted }: RouteSetupPageProps) {
           <button
             type="submit"
             className="btn btn-primary"
-            disabled={contacts.length === 0 || !origin || !destination}
+            disabled={!emergencyCount || !origin || !destination}
           >
             이동 시작
           </button>

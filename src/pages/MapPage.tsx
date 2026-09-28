@@ -7,15 +7,20 @@ import { StatusBadge } from '../components/StatusBadge'
 import { RouteSetupPage } from './RouteSetupPage'
 
 export function MapPage() {
-  const { status, route, breadcrumbs, simMinutesElapsed, checkIn, resetSession } = useTracking()
+  const { status, route, breadcrumbs, simMinutesElapsed, dispatchNotice, checkIn, resolveAlert, arrive, stopTracking } =
+    useTracking()
   const navigate = useNavigate()
   const [modalOpen, setModalOpen] = useState(false)
 
   const current = breadcrumbs.at(-1)?.coord ?? null
 
+  const handleArrive = () => {
+    if (window.confirm('도착 처리할까요? 비상 연락망에 도착 메시지가 전송돼요.')) arrive()
+  }
+
   const handleStop = () => {
-    if (window.confirm('이동을 중단할까요? 지금까지의 경로 기록이 초기화돼요.')) {
-      resetSession()
+    if (window.confirm('이동을 중단할까요? 지금까지의 경로 기록이 초기화되고 비상 연락망에 중단 메시지가 전송돼요.')) {
+      stopTracking()
     }
   }
 
@@ -47,6 +52,12 @@ export function MapPage() {
         )}
       </div>
 
+      {dispatchNotice && (
+        <div className={`dispatch-notice ${dispatchNotice.failed ? 'dispatch-notice-failed' : ''}`}>
+          {dispatchNotice.text}
+        </div>
+      )}
+
       <div className="floating-nav">
         {status === 'idle' && (
           <button type="button" className="floating-nav-btn floating-nav-btn-primary" onClick={() => setModalOpen(true)}>
@@ -60,13 +71,15 @@ export function MapPage() {
           </button>
         )}
 
-        {(status === 'alert' || status === 'resolved') && (
-          <button
-            type="button"
-            className="floating-nav-btn"
-            onClick={() => navigate('/messenger', { state: { segment: 'alert' } })}
-          >
-            알림방으로{status === 'alert' ? ' 🔴' : ''}
+        {status === 'alert' && (
+          <button type="button" className="floating-nav-btn floating-nav-btn-primary" onClick={resolveAlert}>
+            나 괜찮아
+          </button>
+        )}
+
+        {status !== 'idle' && (
+          <button type="button" className="floating-nav-btn" onClick={handleArrive}>
+            도착했어요
           </button>
         )}
 

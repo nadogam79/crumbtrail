@@ -3,13 +3,6 @@ export interface Coordinate {
   lng: number
 }
 
-export interface Contact {
-  id: string
-  name: string
-  phone: string
-  relation: string
-}
-
 export interface Breadcrumb {
   coord: Coordinate
   timestamp: number
@@ -53,14 +46,6 @@ export interface AlertInfo {
 }
 
 export type SessionStatus = 'idle' | 'active' | 'alert' | 'resolved'
-
-export interface ChatMessage {
-  id: string
-  author: 'system' | 'user' | string
-  authorLabel: string
-  text: string
-  timestamp: number
-}
 
 export const ALERT_REASON_LABEL: Record<AlertReason, string> = {
   deviation: '경로 이탈',

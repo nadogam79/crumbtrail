@@ -228,23 +228,6 @@
   gap: 8px;
 }
 
-.ack-status {
-  font-size: 13px;
-  font-weight: 600;
-  padding: 4px 10px;
-  border-radius: 999px;
-}
-
-.ack-status.waiting {
-  background: var(--code-bg);
-  color: var(--text);
-}
-
-.ack-status.acked {
-  background: rgba(22, 163, 74, 0.12);
-  color: #16a34a;
-}
-
 .route-map {
   width: 100%;
   height: 320px;
@@ -551,10 +534,6 @@
   color: var(--text-h);
 }
 
-.resolve-btn {
-  align-self: flex-start;
-}
-
 .messenger-fab {
   position: fixed;
   bottom: 24px;
@@ -593,17 +572,6 @@
   line-height: 1;
 }
 
-.friend-online {
-  position: absolute;
-  right: -2px;
-  bottom: -2px;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: #16a34a;
-  border: 2px solid var(--bg);
-}
-
 .friend-info {
   min-width: 0;
 }
@@ -612,4 +580,93 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.app-header-user {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--text-h);
+}
+
+.btn-small {
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
+.friend-link .friend-info {
+  flex-grow: 1;
+}
+
+.room-time {
+  font-size: 12px;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.room-last-auto {
+  color: #dc2626;
+}
+
+.emergency-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.picker-item {
+  justify-content: flex-start;
+  cursor: pointer;
+}
+
+.chat-room-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.chat-auto {
+  border: 2px solid #dc2626;
+}
+
+.chat-contact.chat-auto {
+  background: rgba(220, 38, 38, 0.1);
+}
+
+.chat-location {
+  margin-top: 4px;
+  font-size: 13px;
+  color: inherit;
+  text-decoration: underline;
+}
+
+.dispatch-notice {
+  position: absolute;
+  top: 72px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 6;
+  max-width: calc(100% - 24px);
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  background: var(--bg);
+  color: var(--text-h);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+}
+
+.dispatch-notice-failed {
+  color: #dc2626;
+  border-color: #dc2626;
+}
+
+.contact-actions .btn {
+  white-space: nowrap;
 }

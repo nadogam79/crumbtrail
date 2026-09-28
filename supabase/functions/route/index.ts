@@ -104,6 +104,13 @@ function straightDistanceMeters(a: { lat: number; lng: number }, b: { lat: numbe
   return 2 * R * Math.asin(Math.sqrt(h))
 }
 
+// Tmap이 호출 한도 초과로 거절한 응답인지 (HTTP 429 또는 "Limit Exceeded" 메시지)
+function isQuotaExceeded(status: number, body: any) {
+  return status === 429 || /limit exceeded|quota/i.test(body?.error?.message ?? '')
+}
+
+class QuotaExceededError extends Error {}
+
 interface PedestrianFeature {
   geometry: { type: string; coordinates: number[] | number[][] }
   properties: { totalDistance?: number; totalTime?: number }
@@ -132,6 +139,7 @@ async function fetchPedestrianRoute(
   })
   const json = await res.json()
   const features: PedestrianFeature[] = json?.features ?? []
+  if (isQuotaExceeded(res.status, json)) throw new QuotaExceededError()
   if (!res.ok || features.length === 0) {
     throw new Error(json?.error?.message ?? '보행자 경로를 찾지 못했어요.')
   }
@@ -157,6 +165,10 @@ function json(body: unknown, status = 200) {
     headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
   })
 }
+
+// 프론트가 일반 실패와 구분해 안내할 수 있도록 code를 붙인다
+const quotaExceeded = () =>
+  json({ error: 'TMAP 경로 검색 API의 호출 한도를 모두 사용했어요.', code: 'QUOTA_EXCEEDED' }, 429)
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -206,6 +218,7 @@ Deno.serve(async (req) => {
 
     if (itineraries.length === 0) {
       // 경로 자체가 없으면(가까운 거리 등) 거리와 무관하게, 조회가 실패했으면 가까울 때만 보행자 경로로 대체
+      const transitQuotaExceeded = isQuotaExceeded(tmapRes.status, tmapJson)
       const transitError = tmapRes.ok ? null : (tmapJson?.error?.message ?? 'Tmap 조회 실패')
       const shouldTryPedestrian =
         !transitError || straightDistanceMeters(origin, destination) <= PEDESTRIAN_FALLBACK_MAX_METERS
@@ -213,9 +226,11 @@ Deno.serve(async (req) => {
         try {
           return json(await fetchPedestrianRoute(appKey, origin, destination))
         } catch (err) {
+          if (err instanceof QuotaExceededError) return quotaExceeded()
           return json({ error: err instanceof Error ? err.message : '보행자 경로를 찾지 못했어요.' }, 502)
         }
       }
+      if (transitQuotaExceeded) return quotaExceeded()
       return json({ error: transitError }, 502)
     }
 

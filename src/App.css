@@ -830,18 +830,91 @@
   color: #fff;
 }
 
+.kakao-me {
+  position: relative;
+  width: 16px;
+  height: 16px;
+}
+
 .kakao-pin-current {
-  width: 14px;
-  height: 14px;
+  position: absolute;
+  inset: 0;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
   background: var(--accent);
   border: 3px solid #fff;
-  box-shadow: 0 0 0 4px rgba(37, 110, 244, 0.25);
+  box-shadow: 0 1px 4px rgba(30, 33, 36, 0.35);
+  box-sizing: border-box;
+}
+
+/* '지금 여기'를 알리는 퍼지는 물결 */
+.kakao-pin-pulse {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 16px;
+  height: 16px;
+  margin: -8px 0 0 -8px;
+  border-radius: 50%;
+  background: rgba(37, 110, 244, 0.35);
+  animation: pin-pulse 2s ease-out infinite;
+}
+
+@keyframes pin-pulse {
+  from {
+    transform: scale(1);
+    opacity: 1;
+  }
+  to {
+    transform: scale(3.6);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kakao-pin-pulse {
+    animation: none;
+    transform: scale(2);
+    opacity: 0.5;
+  }
+}
+
+.map-locate-fab {
+  position: absolute;
+  right: 16px;
+  /* 하단 Nav(28px 위 + 높이 약 54px) 바로 위 */
+  bottom: 96px;
+  z-index: 6;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+  color: var(--text-h);
+  box-shadow: var(--shadow);
+  cursor: pointer;
+}
+
+.map-locate-fab:hover {
+  background: var(--surface);
+}
+
+.map-locate-fab:active {
+  color: var(--accent);
 }
 
 .kakao-crumb {
   font-size: 16px;
   transform: translateY(4px);
+}
+
+.kakao-crumb-passed {
+  opacity: 0.35;
+  filter: grayscale(1);
 }
 
 /* ── 하단 플로팅 Nav (지도/메신저 공통) ─────────────── */

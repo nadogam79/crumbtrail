@@ -3,7 +3,7 @@ import { useTracking } from '../context/TrackingContext'
 import { RouteMap } from '../components/RouteMap'
 import { distanceMeters } from '../lib/geo'
 import { loadKakaoMaps } from '../lib/kakaoMaps'
-import { fetchRoute } from '../lib/routing'
+import { fetchRoute, RouteError } from '../lib/routing'
 import type { Coordinate, RouteResult } from '../types'
 
 interface RouteSetupPageProps {
@@ -47,7 +47,8 @@ export function RouteSetupPage({ onStarted }: RouteSetupPageProps) {
 
   const [route, setRoute] = useState<RouteResult | null>(null)
   const [routing, setRouting] = useState(false)
-  const [routingFailed, setRoutingFailed] = useState(false)
+  // null: 실패 아님, 'quota': TMAP 호출 한도 소진, 'error': 그 외 실패
+  const [routingFailure, setRoutingFailure] = useState<'quota' | 'error' | null>(null)
   // 다시 시도 버튼으로 같은 출발/도착지 경로를 재조회하기 위한 트리거
   const [routeAttempt, setRouteAttempt] = useState(0)
 
@@ -84,20 +85,20 @@ export function RouteSetupPage({ onStarted }: RouteSetupPageProps) {
   useEffect(() => {
     if (!origin || !destination) {
       setRoute(null)
-      setRoutingFailed(false)
+      setRoutingFailure(null)
       return
     }
 
     let cancelled = false
     setRoute(null)
-    setRoutingFailed(false)
+    setRoutingFailure(null)
     setRouting(true)
     fetchRoute(origin, destination.coord)
       .then((result) => {
         if (!cancelled) setRoute(result)
       })
-      .catch(() => {
-        if (!cancelled) setRoutingFailed(true)
+      .catch((err) => {
+        if (!cancelled) setRoutingFailure(err instanceof RouteError && err.code === 'QUOTA_EXCEEDED' ? 'quota' : 'error')
       })
       .finally(() => {
         if (!cancelled) setRouting(false)
@@ -242,7 +243,13 @@ export function RouteSetupPage({ onStarted }: RouteSetupPageProps) {
                 {route.legs.some((l) => l.mode !== 'WALK') ? '대중교통' : '도보'} · 약 {etaMinutes}분 ·{' '}
                 {formatDistance(route.totalDistanceMeters)}
               </span>
-            ) : routingFailed ? (
+            ) : routingFailure === 'quota' ? (
+              // 한도는 기다려도 오늘 안에 풀리지 않으므로 다시 시도 버튼은 두지 않는다
+              <span className="route-summary-warn">
+                오늘 경로 검색(TMAP) 한도를 모두 사용해 직선 거리로 추정했어요 (약 {etaMinutes}분). 이탈 감지도 직선
+                기준으로 동작해요.
+              </span>
+            ) : routingFailure === 'error' ? (
               <>
                 <span className="route-summary-warn">
                   경로를 불러오지 못해 직선 거리로 추정했어요 (약 {etaMinutes}분). 이탈 감지도 직선 기준으로 동작해요.

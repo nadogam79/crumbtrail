@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { loadKakaoMaps } from '../lib/kakaoMaps'
-import { generateCheckpoints, sampleAlongPath } from '../lib/geo'
+import { pathLengthMeters, sampleAlongPath, splitPathAt } from '../lib/geo'
 import type { Coordinate, RouteLeg, TransitMode } from '../types'
 
 interface RouteMapProps {
@@ -8,22 +8,36 @@ interface RouteMapProps {
   destination: Coordinate | null
   current?: Coordinate | null
   legs?: RouteLeg[] | null
+  // 값이 바뀔 때마다 현재 위치를 지도 중앙으로 옮긴다 (내 위치 버튼용)
+  recenterKey?: number
+  // 경로 시작점부터 이미 지나온 거리(m). 이 지점까지는 회색으로 그린다
+  progressMeters?: number
   className?: string
 }
 
+// 빵조각(🍞) 간격: 기본 200m, 경로가 길면 전체 개수가 MAX_CRUMBS를 넘지 않도록 간격을 늘린다
+const MIN_CRUMB_INTERVAL_METERS = 200
+const MAX_CRUMBS = 30
+
+const crumbInterval = (totalMeters: number) => Math.max(MIN_CRUMB_INTERVAL_METERS, totalMeters / MAX_CRUMBS)
+
 const DEFAULT_CENTER: Coordinate = { lat: 37.5665, lng: 126.978 } // 서울시청 (지도 초기값)
 
-const LEG_STYLE: Record<TransitMode, { color: string; style: string }> = {
-  WALK: { color: '#b98a4e', style: 'shortdash' },
-  BUS: { color: '#2563eb', style: 'solid' },
-  SUBWAY: { color: '#16a34a', style: 'solid' },
+const LEG_COLOR: Record<TransitMode, string> = {
+  WALK: '#f97316',
+  BUS: '#2563eb',
+  SUBWAY: '#16a34a',
 }
+const PASSED_COLOR = '#9aa1a8'
+const ROUTE_WEIGHT = 6
 
 export function RouteMap({
   origin,
   destination,
   current,
   legs,
+  recenterKey,
+  progressMeters,
   className = 'route-map',
 }: RouteMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -53,6 +67,8 @@ export function RouteMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // 경로 그리기: 지나온 구간(progressMeters까지)은 회색, 남은 구간은 이동수단별 색.
+  // 진행도가 바뀔 때마다 다시 그리지만 지도 범위는 건드리지 않는다(아래 effect 담당).
   useEffect(() => {
     if (!mapReady) return
     const kakao = window.kakao
@@ -63,89 +79,87 @@ export function RouteMap({
 
     if (!origin) return
 
-    const bounds = new kakao.maps.LatLngBounds()
-    const addOverlay = (overlay: any, position: Coordinate) => {
+    const show = (overlay: any) => {
       overlay.setMap(map)
       routeOverlaysRef.current.push(overlay)
-      bounds.extend(new kakao.maps.LatLng(position.lat, position.lng))
     }
-
-    addOverlay(
-      new kakao.maps.CustomOverlay({
-        position: new kakao.maps.LatLng(origin.lat, origin.lng),
-        content: '<div class="kakao-pin kakao-pin-origin">출발</div>',
-        yAnchor: 1.4,
-      }),
-      origin,
-    )
-
-    if (destination) {
-      addOverlay(
+    const pin = (position: Coordinate, html: string) =>
+      show(
         new kakao.maps.CustomOverlay({
-          position: new kakao.maps.LatLng(destination.lat, destination.lng),
-          content: '<div class="kakao-pin kakao-pin-destination">도착</div>',
+          position: new kakao.maps.LatLng(position.lat, position.lng),
+          content: html,
           yAnchor: 1.4,
+          zIndex: 3,
         }),
-        destination,
       )
-
-      const hasRealLegs = !!legs && legs.length > 0 && legs.some((l) => l.path.length > 1)
-
-      if (hasRealLegs) {
-        // 실제 보행/대중교통 경로: leg마다 이동수단별 색으로 그리고, 각 leg를 따라
-        // 빵조각(🍞)을 200m 간격으로 뿌린다.
-        legs!.forEach((leg) => {
-          if (leg.path.length < 2) return
-          const style = LEG_STYLE[leg.mode]
-          const kakaoPath = leg.path.map((c) => new kakao.maps.LatLng(c.lat, c.lng))
-          const polyline = new kakao.maps.Polyline({
-            path: kakaoPath,
-            strokeWeight: leg.mode === 'WALK' ? 3 : 5,
-            strokeColor: style.color,
-            strokeStyle: style.style,
-          })
-          polyline.setMap(map)
-          routeOverlaysRef.current.push(polyline)
-          leg.path.forEach((c) => bounds.extend(new kakao.maps.LatLng(c.lat, c.lng)))
-
-          if (leg.mode === 'WALK') {
-            sampleAlongPath(leg.path).forEach((c) => {
-              addOverlay(
-                new kakao.maps.CustomOverlay({
-                  position: new kakao.maps.LatLng(c.lat, c.lng),
-                  content: '<div class="kakao-crumb">🍞</div>',
-                }),
-                c,
-              )
-            })
-          }
-        })
-      } else {
-        // 실제 경로를 아직 못 받아왔을 때의 폴백: 직선 미리보기
-        const checkpoints = generateCheckpoints(origin, destination)
-        const path = [origin, ...checkpoints, destination].map((c) => new kakao.maps.LatLng(c.lat, c.lng))
-        const polyline = new kakao.maps.Polyline({
-          path,
-          strokeWeight: 3,
-          strokeColor: '#b98a4e',
-          strokeStyle: 'shortdash',
-        })
-        polyline.setMap(map)
-        routeOverlaysRef.current.push(polyline)
-
-        checkpoints.forEach((c) => {
-          addOverlay(
-            new kakao.maps.CustomOverlay({
-              position: new kakao.maps.LatLng(c.lat, c.lng),
-              content: '<div class="kakao-crumb">🍞</div>',
-            }),
-            c,
-          )
-        })
-      }
+    // 흰 테두리 선을 먼저 깔고 그 위에 색 선을 올려 지도 배경과 분리한다
+    const line = (path: Coordinate[], style: { color: string; dashed?: boolean }, zIndex: number) => {
+      if (path.length < 2) return
+      const kakaoPath = path.map((c) => new kakao.maps.LatLng(c.lat, c.lng))
+      show(
+        new kakao.maps.Polyline({
+          path: kakaoPath,
+          strokeWeight: ROUTE_WEIGHT + 4,
+          strokeColor: '#ffffff',
+          strokeOpacity: 1,
+          zIndex,
+        }),
+      )
+      show(
+        new kakao.maps.Polyline({
+          path: kakaoPath,
+          strokeWeight: ROUTE_WEIGHT,
+          strokeColor: style.color,
+          strokeOpacity: 1,
+          strokeStyle: style.dashed ? 'shortdash' : 'solid',
+          zIndex: zIndex + 1,
+        }),
+      )
     }
 
-    map.setBounds(bounds, 48)
+    pin(origin, '<div class="kakao-pin kakao-pin-origin">출발</div>')
+    if (!destination) return
+    pin(destination, '<div class="kakao-pin kakao-pin-destination">도착</div>')
+
+    // 실제 경로를 못 받았으면 출발-도착 직선을 추정 경로(점선)로 그린다
+    const hasRealLegs = !!legs && legs.some((l) => l.path.length > 1)
+    const drawLegs: { mode: TransitMode; path: Coordinate[]; estimated?: boolean }[] = hasRealLegs
+      ? legs!.filter((l) => l.path.length > 1)
+      : [{ mode: 'WALK', path: [origin, destination], estimated: true }]
+
+    const passed = progressMeters ?? 0
+    let legStart = 0
+    drawLegs.forEach((leg) => {
+      const [done, remaining] = splitPathAt(leg.path, passed - legStart)
+      line(done, { color: PASSED_COLOR, dashed: leg.estimated }, 1)
+      line(remaining, { color: LEG_COLOR[leg.mode], dashed: leg.estimated }, 3)
+      legStart += pathLengthMeters(leg.path)
+    })
+
+    // 빵조각은 이동수단과 상관없이 전체 경로를 이어서 뿌린다. leg별로 뿌리면 버스/지하철
+    // 구간과 200m보다 짧은 도보 구간에는 하나도 찍히지 않는다. 지나온 빵조각은 흐리게.
+    const fullPath = drawLegs.flatMap((leg) => leg.path)
+    const interval = crumbInterval(pathLengthMeters(fullPath))
+    sampleAlongPath(fullPath, interval).forEach((c, i) => {
+      const isPassed = (i + 1) * interval <= passed
+      show(
+        new kakao.maps.CustomOverlay({
+          position: new kakao.maps.LatLng(c.lat, c.lng),
+          content: `<div class="kakao-crumb${isPassed ? ' kakao-crumb-passed' : ''}">🍞</div>`,
+          zIndex: 2,
+        }),
+      )
+    })
+  }, [mapReady, origin, destination, legs, progressMeters])
+
+  // 경로가 바뀔 때만 전체 경로가 보이도록 지도 범위를 맞춘다
+  useEffect(() => {
+    if (!mapReady || !origin) return
+    const kakao = window.kakao
+    const bounds = new kakao.maps.LatLngBounds()
+    const points = [origin, ...(destination ? [destination] : []), ...(legs?.flatMap((l) => l.path) ?? [])]
+    points.forEach((c) => bounds.extend(new kakao.maps.LatLng(c.lat, c.lng)))
+    mapRef.current.setBounds(bounds, 48)
   }, [mapReady, origin, destination, legs])
 
   useEffect(() => {
@@ -161,12 +175,20 @@ export function RouteMap({
     const position = new kakao.maps.LatLng(current.lat, current.lng)
     currentOverlayRef.current = new kakao.maps.CustomOverlay({
       position,
-      content: '<div class="kakao-pin kakao-pin-current"></div>',
+      content: '<div class="kakao-me"><span class="kakao-pin-pulse"></span><span class="kakao-pin-current"></span></div>',
       zIndex: 10,
     })
     currentOverlayRef.current.setMap(map)
     map.panTo(position)
   }, [mapReady, current])
+
+  useEffect(() => {
+    if (!recenterKey || !mapReady || !current) return
+    const kakao = window.kakao
+    mapRef.current.panTo(new kakao.maps.LatLng(current.lat, current.lng))
+    // 버튼을 누른 순간에만 반응해야 하므로 current 변화에는 반응하지 않는다 (그건 위 effect가 담당)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recenterKey, mapReady])
 
   if (error) {
     return <p className="warning-text">{error}</p>

@@ -15,6 +15,8 @@ import { distanceMeters, distanceToPolylineMeters, distanceToRouteMeters } from 
 import { sendAutoAlert } from '../lib/messenger'
 
 const STILL_EPSILON_METERS = 5
+// 지도 상단 발송 결과 알림이 자동으로 사라지기까지의 시간
+const DISPATCH_NOTICE_MS = 5000
 
 interface TrackingState {
   status: SessionStatus
@@ -99,6 +101,12 @@ export function TrackingProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     stateRef.current = state
   })
+
+  useEffect(() => {
+    if (!dispatchNotice) return
+    const timer = setTimeout(() => setDispatchNotice(null), DISPATCH_NOTICE_MS)
+    return () => clearTimeout(timer)
+  }, [dispatchNotice])
 
   // 지도 탭 이벤트를 비상 연락망 친구들의 1:1방으로 자동 발송
   const notify = useCallback(async (label: string, body: string, coord: Coordinate | null) => {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTracking } from '../context/TrackingContext'
 import { RouteMap } from '../components/RouteMap'
@@ -6,7 +6,9 @@ import { AccountMenu } from '../components/AccountMenu'
 import { GuideModal } from '../components/GuideModal'
 import { Modal } from '../components/Modal'
 import { StatusBadge } from '../components/StatusBadge'
+import { projectOntoPath } from '../lib/geo'
 import { isGuideHiddenToday } from '../lib/guidePreference'
+import type { Coordinate } from '../types'
 import { RouteSetupPage } from './RouteSetupPage'
 
 // 앱을 연(새로고침/로그인) 뒤 지도 화면에 처음 들어올 때 한 번만 가이드를 띄운다.
@@ -25,7 +27,48 @@ export function MapPage() {
     setGuideOpen(true)
   }, [])
 
-  const current = breadcrumbs.at(-1)?.coord ?? null
+  // 대기 중에는 지도 기본 위치를 현재 위치로. 추적 중에는 breadcrumb이 현재 위치가 된다.
+  const [idleLocation, setIdleLocation] = useState<Coordinate | null>(null)
+
+  useEffect(() => {
+    if (status !== 'idle' || !navigator.geolocation) return
+    navigator.geolocation.getCurrentPosition(
+      (pos) => setIdleLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      () => {}, // 권한 거부 등이면 기본 위치(서울시청)를 그대로 보여준다
+      { timeout: 8000 },
+    )
+  }, [status])
+
+  const current = breadcrumbs.at(-1)?.coord ?? (status === 'idle' ? idleLocation : null)
+  const [recenterKey, setRecenterKey] = useState(0)
+
+  // 경로를 따라 어디까지 왔는지(m). 경로에서 이탈 허용 거리 안에 있던 위치만 인정하고,
+  // GPS가 흔들려 뒤로 튀어도 진행도가 줄지 않도록 지금까지의 최댓값을 쓴다.
+  const progressMeters = useMemo(() => {
+    if (!route || status === 'idle') return 0
+    const path = route.legs?.flatMap((leg) => leg.path) ?? []
+    const routePath = path.length > 1 ? path : [route.origin, route.destination]
+    return breadcrumbs.reduce((max, crumb) => {
+      const { alongMeters, offMeters } = projectOntoPath(crumb.coord, routePath)
+      return offMeters <= route.deviationThresholdMeters ? Math.max(max, alongMeters) : max
+    }, 0)
+  }, [route, breadcrumbs, status])
+
+  // 대기 중이면 위치를 새로 받아온 뒤, 추적 중이면 마지막 GPS 위치로 지도를 옮긴다
+  const handleLocate = () => {
+    if (status === 'idle' && navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setIdleLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude })
+          setRecenterKey((k) => k + 1)
+        },
+        () => setRecenterKey((k) => k + 1),
+        { timeout: 8000 },
+      )
+      return
+    }
+    setRecenterKey((k) => k + 1)
+  }
 
   const handleArrive = () => {
     if (window.confirm('도착 처리할까요? 비상 연락망에 도착 메시지가 전송돼요.')) arrive()
@@ -44,8 +87,17 @@ export function MapPage() {
         destination={route?.destination ?? null}
         current={current}
         legs={route?.legs}
+        recenterKey={recenterKey}
+        progressMeters={progressMeters}
         className="route-map route-map-full"
       />
+
+      <button type="button" className="map-locate-fab" onClick={handleLocate} aria-label="내 위치로 이동" title="내 위치로 이동">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <circle cx="12" cy="12" r="4" stroke="currentColor" strokeWidth="1.8" />
+          <path d="M12 2v3M12 19v3M2 12h3M19 12h3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+        </svg>
+      </button>
 
       <div className={`map-topbar ${status === 'alert' ? 'chip-alert' : ''}`}>
         <span className="map-topbar-brand">🍞 CrumbTrail</span>

@@ -1,6 +1,16 @@
 import type { Coordinate, RouteResult } from '../types'
 
-// Calls the Supabase Edge Function that proxies ODsay (see supabase/functions/route).
+// 경로 조회 실패. code가 QUOTA_EXCEEDED면 TMAP 호출 한도를 다 쓴 것이라 재시도해도 소용없다.
+export class RouteError extends Error {
+  code?: 'QUOTA_EXCEEDED'
+
+  constructor(message: string, code?: 'QUOTA_EXCEEDED') {
+    super(message)
+    this.code = code
+  }
+}
+
+// Calls the Supabase Edge Function that proxies Tmap (see supabase/functions/route).
 // No supabase-js needed — it's a plain HTTPS endpoint guarded by the anon key.
 export async function fetchRoute(origin: Coordinate, destination: Coordinate): Promise<RouteResult> {
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
@@ -23,7 +33,7 @@ export async function fetchRoute(origin: Coordinate, destination: Coordinate): P
 
   const json = await res.json()
   if (!res.ok) {
-    throw new Error(json.error ?? '경로를 불러오지 못했어요.')
+    throw new RouteError(json.error ?? '경로를 불러오지 못했어요.', json.code)
   }
   return json as RouteResult
 }

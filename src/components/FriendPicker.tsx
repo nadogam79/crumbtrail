@@ -9,7 +9,8 @@ interface FriendPickerProps {
 }
 
 export function FriendPicker({ friends, selected, onChange, excludeIds }: FriendPickerProps) {
-  const candidates = friends.filter((f) => !excludeIds?.has(f.profile.id))
+  // 경찰은 단체방에 넣을 수 없다
+  const candidates = friends.filter((f) => !f.isPolice && !excludeIds?.has(f.profile.id))
 
   if (candidates.length === 0) return <p className="map-hint">선택할 수 있는 친구가 없어요.</p>
 

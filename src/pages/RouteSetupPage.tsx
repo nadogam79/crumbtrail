@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useState, type FormEvent, type KeyboardEvent } from 'react'
-import { Link } from 'react-router-dom'
 import { useTracking } from '../context/TrackingContext'
 import { RouteMap } from '../components/RouteMap'
 import { loadKakaoMaps } from '../lib/kakaoMaps'
 import { fetchRoute } from '../lib/routing'
-import { listFriends } from '../lib/messenger'
 import type { Coordinate, RouteResult } from '../types'
 
 interface RouteSetupPageProps {
@@ -13,14 +11,6 @@ interface RouteSetupPageProps {
 
 export function RouteSetupPage({ onStarted }: RouteSetupPageProps) {
   const { startRoute } = useTracking()
-  // null: 확인 중. 비상 연락망이 없으면 알림이 아무에게도 가지 않으므로 시작을 막는다.
-  const [emergencyCount, setEmergencyCount] = useState<number | null>(null)
-
-  useEffect(() => {
-    listFriends()
-      .then((friends) => setEmergencyCount(friends.filter((f) => f.isEmergency).length))
-      .catch(() => setEmergencyCount(0))
-  }, [])
 
   const [destinationLabel, setDestinationLabel] = useState('집')
   const [origin, setOrigin] = useState<Coordinate | null>(null)
@@ -122,7 +112,7 @@ export function RouteSetupPage({ onStarted }: RouteSetupPageProps) {
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault()
-    if (!emergencyCount || !origin || !destination) return
+    if (!origin || !destination) return
 
     startRoute({
       destinationLabel,
@@ -143,15 +133,6 @@ export function RouteSetupPage({ onStarted }: RouteSetupPageProps) {
         <h1>경로 설정</h1>
         <p>목적지를 검색하거나 지도를 클릭해서 지정해주세요. 출발 위치는 현재 위치로 자동 설정돼요.</p>
 
-        {emergencyCount === 0 && (
-          <p className="warning-text">
-            알림을 받을 비상 연락망이 없어요.{' '}
-            <Link to="/messenger" state={{ segment: 'friends' }}>
-              친구를 비상 연락망으로 지정
-            </Link>
-            해주세요.
-          </p>
-        )}
 
         <form className="form" onSubmit={handleSubmit}>
           <div className="field-row">
@@ -259,7 +240,7 @@ export function RouteSetupPage({ onStarted }: RouteSetupPageProps) {
           <button
             type="submit"
             className="btn btn-primary"
-            disabled={!emergencyCount || !origin || !destination}
+            disabled={!origin || !destination}
           >
             이동 시작
           </button>

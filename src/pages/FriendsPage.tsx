@@ -147,23 +147,24 @@ export function FriendsPage() {
                 <div className="friend-info">
                   <strong>{f.profile.name}</strong>
                   <span className="contact-relation"> @{f.profile.handle}</span>
-                  <label className="emergency-toggle">
-                    <input
-                      type="checkbox"
-                      checked={f.isEmergency}
-                      onChange={() => toggleEmergency(f)}
-                      disabled={busy}
-                    />
-                    비상 연락망
-                  </label>
+                  {f.isPolice ? (
+                    <div className="emergency-toggle">기본 친구 · 모든 비상 메시지를 받아요</div>
+                  ) : (
+                    <label className="emergency-toggle">
+                      <input type="checkbox" checked={f.isEmergency} onChange={() => toggleEmergency(f)} />
+                      비상 연락망
+                    </label>
+                  )}
                 </div>
                 <div className="contact-actions">
                   <button type="button" className="btn btn-secondary" onClick={() => openDm(f)} disabled={busy}>
                     대화
                   </button>
-                  <button type="button" className="btn btn-danger" onClick={() => handleRemove(f)} disabled={busy}>
-                    삭제
-                  </button>
+                  {!f.isPolice && (
+                    <button type="button" className="btn btn-danger" onClick={() => handleRemove(f)} disabled={busy}>
+                      삭제
+                    </button>
+                  )}
                 </div>
               </li>
             ))}

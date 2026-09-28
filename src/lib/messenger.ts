@@ -10,6 +10,8 @@ export interface Profile {
 export interface Friend {
   profile: Profile
   isEmergency: boolean
+  // 기본 친구 '경찰': 삭제/비상 연락망 해제/단체방 초대 불가, 모든 자동 메시지 수신
+  isPolice: boolean
 }
 
 export interface RoomSummary {
@@ -61,10 +63,14 @@ export async function listFriends(): Promise<Friend[]> {
   const rows = unwrap(
     await supabase
       .from('friendships')
-      .select('is_emergency, friend:profiles!friendships_friend_id_fkey(id, handle, name)')
+      .select('is_emergency, friend:profiles!friendships_friend_id_fkey(id, handle, name, is_police)')
       .order('created_at'),
-  ) as unknown as { is_emergency: boolean; friend: Profile }[]
-  return rows.map((r) => ({ profile: r.friend, isEmergency: r.is_emergency }))
+  ) as unknown as { is_emergency: boolean; friend: Profile & { is_police: boolean } }[]
+  return rows.map(({ is_emergency, friend: { is_police, ...profile } }) => ({
+    profile,
+    isEmergency: is_emergency,
+    isPolice: is_police,
+  }))
 }
 
 const SEARCH_LIMIT = 20

@@ -1,4 +1,5 @@
 import type { Friend } from '../lib/messenger'
+import { Avatar } from './Avatar'
 
 interface FriendPickerProps {
   friends: Friend[]
@@ -22,15 +23,23 @@ export function FriendPicker({ friends, selected, onChange, excludeIds }: Friend
   }
 
   return (
-    <ul className="contact-list">
+    <ul className="list">
       {candidates.map((f) => (
         <li key={f.profile.id}>
-          <label className="contact-item picker-item">
-            <input type="checkbox" checked={selected.has(f.profile.id)} onChange={() => toggle(f.profile.id)} />
-            <span className="friend-info">
-              <strong>{f.profile.name}</strong>
-              <span className="contact-relation"> @{f.profile.handle}</span>
+          <label className="list-row">
+            <Avatar name={f.profile.name} small />
+            <span className="row-main">
+              <span className="row-title">
+                {f.profile.name}
+                <span className="muted">@{f.profile.handle}</span>
+              </span>
             </span>
+            <input
+              type="checkbox"
+              className="picker-check"
+              checked={selected.has(f.profile.id)}
+              onChange={() => toggle(f.profile.id)}
+            />
           </label>
         </li>
       ))}

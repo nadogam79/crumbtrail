@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+import { Fragment, useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { FriendPicker } from '../components/FriendPicker'
 import { useAuth } from '../context/AuthContext'
@@ -18,14 +18,12 @@ import {
 
 const MESSAGE_POLL_MS = 5_000
 
-const formatTime = (iso: string) =>
-  new Date(iso).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+const formatTime = (iso: string) => new Date(iso).toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' })
 
-function bubbleClass(m: Message, myId: string | undefined) {
-  if (m.kind === 'system') return 'chat-bubble chat-system'
-  const side = m.sender_id === myId ? 'chat-user' : 'chat-contact'
-  return `chat-bubble ${side}${m.kind === 'auto' ? ' chat-auto' : ''}`
-}
+const formatDate = (iso: string) =>
+  new Date(iso).toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })
+
+const dayKey = (iso: string) => new Date(iso).toDateString()
 
 export function ChatPage({ roomId }: { roomId: string }) {
   const { profile } = useAuth()
@@ -120,21 +118,22 @@ export function ChatPage({ roomId }: { roomId: string }) {
 
   if (room === undefined) {
     return (
-      <div className="page">
-        <p className="map-hint">불러오는 중...</p>
+      <div className="chat-screen">
+        <p className="empty">불러오는 중...</p>
       </div>
     )
   }
 
   if (room === null) {
     return (
-      <div className="page">
-        <section className="card">
+      <div className="chat-screen">
+        <div className="empty">
           <p>대화방을 찾을 수 없어요.</p>
+          <br />
           <Link to="/messenger" className="btn btn-secondary">
             목록으로
           </Link>
-        </section>
+        </div>
       </div>
     )
   }
@@ -143,83 +142,94 @@ export function ChatPage({ roomId }: { roomId: string }) {
   const title = roomTitle({ name: room.name, member_names: others.map((m) => m.name) })
 
   return (
-    <div className="page">
-      <section className="card chat-card">
-        <div className="status-card-head">
-          <h2>
-            {title}
-            {room.isGroup && <span className="contact-relation"> · {room.members.length}명</span>}
-          </h2>
-          <Link to="/messenger" className="btn btn-secondary">
-            ← 목록
-          </Link>
+    <div className="chat-screen">
+      <div className="chat-bar">
+        <Link to="/messenger" className="chat-back" aria-label="목록으로">
+          ←
+        </Link>
+        <div className="chat-title">
+          <strong>{title}</strong>
+          {room.isGroup && (
+            <span>
+              {room.members.length}명 · {room.members.map((m) => m.name).join(', ')}
+            </span>
+          )}
         </div>
-
         {room.isGroup && (
-          <div className="chat-room-actions">
-            <span className="contact-phone">{room.members.map((m) => m.name).join(', ')}</span>
-            <div className="contact-actions">
-              <button type="button" className="btn btn-secondary btn-small" onClick={openInvite} disabled={busy}>
-                초대
-              </button>
-              <button type="button" className="btn btn-danger btn-small" onClick={handleLeave} disabled={busy}>
-                나가기
-              </button>
-            </div>
+          <div className="row-actions">
+            <button type="button" className="btn-text" onClick={openInvite} disabled={busy}>
+              초대
+            </button>
+            <button type="button" className="btn-text danger" onClick={handleLeave} disabled={busy}>
+              나가기
+            </button>
           </div>
         )}
+      </div>
 
-        {inviting && (
-          <div className="form">
-            <FriendPicker
-              friends={friends}
-              selected={selected}
-              onChange={setSelected}
-              excludeIds={new Set(room.members.map((m) => m.id))}
-            />
-            <div className="field-row">
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={handleInvite}
-                disabled={busy || selected.size === 0}
-              >
-                {selected.size}명 초대
-              </button>
-              <button type="button" className="btn btn-secondary" onClick={() => setInviting(false)}>
-                취소
-              </button>
-            </div>
+      {inviting && (
+        <div className="chat-invite">
+          <FriendPicker
+            friends={friends}
+            selected={selected}
+            onChange={setSelected}
+            excludeIds={new Set(room.members.map((m) => m.id))}
+          />
+          <div className="field-row">
+            <button type="button" className="btn btn-primary btn-small" onClick={handleInvite} disabled={busy || selected.size === 0}>
+              {selected.size}명 초대
+            </button>
+            <button type="button" className="btn btn-secondary btn-small" onClick={() => setInviting(false)}>
+              취소
+            </button>
           </div>
-        )}
-
-        <div className="chat-thread" ref={threadRef}>
-          {messages.length === 0 && <p className="map-hint">아직 메시지가 없어요.</p>}
-          {messages.map((m) => (
-            <div key={m.id} className={bubbleClass(m, profile?.id)}>
-              <span className="chat-author">
-                {m.sender_id === profile?.id ? '나' : (m.sender?.name ?? '(알 수 없음)')} · {formatTime(m.created_at)}
-                {m.kind === 'auto' && ' · 자동 알림'}
-              </span>
-              {m.body}
-              {m.lat !== null && m.lng !== null && (
-                <a className="chat-location" href={kakaoMapLink(m.lat, m.lng)} target="_blank" rel="noreferrer">
-                  📍 위치 보기 ({m.lat.toFixed(4)}, {m.lng.toFixed(4)})
-                </a>
-              )}
-            </div>
-          ))}
         </div>
+      )}
 
-        {error && <p className="warning-text">{error}</p>}
+      <div className="chat-thread" ref={threadRef}>
+        {messages.length === 0 && <p className="empty">아직 메시지가 없어요.</p>}
+        {messages.map((m, i) => {
+          const prev = messages[i - 1]
+          const newDay = !prev || dayKey(prev.created_at) !== dayKey(m.created_at)
+          const mine = m.sender_id === profile?.id
+          // 같은 사람이 이어서 보낸 메시지는 이름을 반복하지 않는다
+          const showName = !mine && (newDay || prev.kind === 'system' || prev.sender_id !== m.sender_id)
 
-        <form className="chat-input-row" onSubmit={handleSend}>
-          <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="메시지 입력" maxLength={2000} />
-          <button type="submit" className="btn btn-primary" disabled={busy}>
-            전송
-          </button>
-        </form>
-      </section>
+          return (
+            <Fragment key={m.id}>
+              {newDay && <div className="date-divider">{formatDate(m.created_at)}</div>}
+              {m.kind === 'system' ? (
+                <div className="msg-system">{m.body}</div>
+              ) : (
+                <div className={`msg-row ${mine ? 'mine' : 'theirs'}`}>
+                  {showName && <span className="msg-name">{m.sender?.name ?? '(알 수 없음)'}</span>}
+                  <div className="msg-line">
+                    <div className={`bubble ${m.kind === 'auto' ? 'bubble-auto' : ''}`}>
+                      {m.kind === 'auto' && <span className="auto-tag">자동 알림</span>}
+                      <span>{m.body}</span>
+                      {m.lat !== null && m.lng !== null && (
+                        <a className="chat-location" href={kakaoMapLink(m.lat, m.lng)} target="_blank" rel="noreferrer">
+                          📍 위치 보기 ({m.lat.toFixed(4)}, {m.lng.toFixed(4)})
+                        </a>
+                      )}
+                    </div>
+                    <span className="msg-time">{formatTime(m.created_at)}</span>
+                  </div>
+                </div>
+              )}
+            </Fragment>
+          )
+        })}
+      </div>
+
+      {error && <p className="warning-text chat-error">{error}</p>}
+
+      <form className="composer" onSubmit={handleSend}>
+        <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="메시지 입력" maxLength={2000} />
+        <button type="submit" className="btn btn-primary" disabled={busy || !draft.trim()}>
+          전송
+        </button>
+      </form>
     </div>
   )
 }

@@ -39,11 +39,12 @@ export function AuthPage() {
   return (
     <div className="app-shell">
       <main className="app-main">
-        <div className="page">
-          <section className="card">
+        <div className="page auth-page">
+          <div className="auth-brand">
             <h1>🍞 CrumbTrail</h1>
-            <p>{mode === 'signin' ? '아이디로 로그인해주세요.' : '이름과 아이디만으로 가입할 수 있어요.'}</p>
-
+            <p>{mode === 'signin' ? '안전한 귀가를 함께 지켜요.' : '이름과 아이디만으로 가입할 수 있어요.'}</p>
+          </div>
+          <section className="card">
             <form className="form" onSubmit={handleSubmit}>
               {mode === 'signup' && (
                 <label className="field">
@@ -77,7 +78,7 @@ export function AuthPage() {
                 {mode === 'signin' ? '로그인' : '가입하기'}
               </button>
             </form>
-            <button type="button" className="btn btn-secondary" onClick={switchMode}>
+            <button type="button" className="btn-text auth-switch" onClick={switchMode}>
               {mode === 'signin' ? '처음이에요 (가입)' : '이미 계정이 있어요 (로그인)'}
             </button>
           </section>

@@ -16,18 +16,22 @@ export function MessengerPage() {
   if (roomId) return <ChatPage key={roomId} roomId={roomId} />
 
   return (
-    <div className="page">
-      <div className="segmented-control">
+    <>
+      <div className="tabs" role="tablist">
         <button
           type="button"
-          className={segment === 'rooms' ? 'segmented-btn active' : 'segmented-btn'}
+          role="tab"
+          aria-selected={segment === 'rooms'}
+          className={segment === 'rooms' ? 'tab active' : 'tab'}
           onClick={() => setSegment('rooms')}
         >
           대화
         </button>
         <button
           type="button"
-          className={segment === 'friends' ? 'segmented-btn active' : 'segmented-btn'}
+          role="tab"
+          aria-selected={segment === 'friends'}
+          className={segment === 'friends' ? 'tab active' : 'tab'}
           onClick={() => setSegment('friends')}
         >
           친구
@@ -35,6 +39,6 @@ export function MessengerPage() {
       </div>
 
       {segment === 'rooms' ? <RoomListPage /> : <FriendsPage />}
-    </div>
+    </>
   )
 }

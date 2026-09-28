@@ -1,12 +1,19 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { Avatar } from '../components/Avatar'
 import { FriendPicker } from '../components/FriendPicker'
 import { createGroupRoom, listFriends, listRooms, roomTitle, type Friend, type RoomSummary } from '../lib/messenger'
 
 const ROOM_LIST_POLL_MS = 15_000
 
-const formatTime = (iso: string) =>
-  new Date(iso).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+// 오늘이면 시각만, 아니면 날짜만 (메신저 목록 관례)
+function formatListTime(iso: string) {
+  const date = new Date(iso)
+  const isToday = date.toDateString() === new Date().toDateString()
+  return isToday
+    ? date.toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' })
+    : date.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })
+}
 
 export function RoomListPage() {
   const navigate = useNavigate()
@@ -55,64 +62,71 @@ export function RoomListPage() {
 
   return (
     <>
-      {creating ? (
-        <section className="card">
+      {creating && (
+        <form className="panel" onSubmit={handleCreate}>
           <h2>단체방 만들기</h2>
-          <form className="form" onSubmit={handleCreate}>
-            <label className="field">
-              <span>방 이름 (선택)</span>
-              <input
-                value={groupName}
-                onChange={(e) => setGroupName(e.target.value)}
-                maxLength={40}
-                placeholder="비워두면 멤버 이름으로 표시돼요"
-              />
-            </label>
-            <FriendPicker friends={friends} selected={selected} onChange={setSelected} />
-            <div className="field-row">
-              <button type="submit" className="btn btn-primary" disabled={busy || selected.size === 0}>
-                {selected.size}명과 만들기
-              </button>
-              <button type="button" className="btn btn-secondary" onClick={() => setCreating(false)}>
-                취소
-              </button>
-            </div>
-          </form>
-        </section>
-      ) : (
-        <button type="button" className="btn btn-secondary" onClick={openCreate}>
-          + 단체방 만들기
-        </button>
+          <label className="field">
+            <span>방 이름 (선택)</span>
+            <input
+              value={groupName}
+              onChange={(e) => setGroupName(e.target.value)}
+              maxLength={40}
+              placeholder="비워두면 멤버 이름으로 표시돼요"
+            />
+          </label>
+          <FriendPicker friends={friends} selected={selected} onChange={setSelected} />
+          <div className="field-row">
+            <button type="submit" className="btn btn-primary" disabled={busy || selected.size === 0}>
+              {selected.size}명과 만들기
+            </button>
+            <button type="button" className="btn btn-secondary" onClick={() => setCreating(false)}>
+              취소
+            </button>
+          </div>
+        </form>
       )}
 
-      {error && <p className="warning-text">{error}</p>}
+      <div className="section-head">
+        <h2>
+          대화 <span className="count">{rooms?.length ?? 0}</span>
+        </h2>
+        {!creating && (
+          <button type="button" className="btn btn-secondary btn-small" onClick={openCreate}>
+            + 단체방 만들기
+          </button>
+        )}
+      </div>
 
-      <section className="card">
-        <h2>대화 ({rooms?.length ?? 0})</h2>
-        {rooms === null ? (
-          <p className="map-hint">불러오는 중...</p>
-        ) : rooms.length === 0 ? (
-          <p>아직 대화가 없어요. 친구 탭에서 대화를 시작해보세요.</p>
-        ) : (
-          <ul className="contact-list">
-            {rooms.map((r) => (
+      {error && <p className="warning-text section-desc">{error}</p>}
+
+      {rooms === null ? (
+        <p className="empty">불러오는 중...</p>
+      ) : rooms.length === 0 ? (
+        <p className="empty">아직 대화가 없어요. 친구 탭에서 대화를 시작해보세요.</p>
+      ) : (
+        <ul className="list">
+          {rooms.map((r) => {
+            const title = roomTitle(r)
+            return (
               <li key={r.id}>
-                <Link to={`/messenger/${r.id}`} className="contact-item friend-link">
-                  <span className="friend-avatar">{r.is_group ? '👥' : '💬'}</span>
-                  <div className="friend-info">
-                    <strong>{roomTitle(r)}</strong>
-                    {r.is_group && <span className="contact-relation"> · {r.member_count}명</span>}
-                    <div className={`contact-phone ${r.last_kind === 'auto' ? 'room-last-auto' : ''}`}>
+                <Link to={`/messenger/${r.id}`} className="list-row">
+                  <Avatar name={title} group={r.is_group} />
+                  <div className="row-main">
+                    <span className="row-title">
+                      {title}
+                      {r.is_group && <span className="muted">{r.member_count}</span>}
+                    </span>
+                    <span className={`row-sub ${r.last_kind === 'auto' ? 'room-last-auto' : ''}`}>
                       {r.last_body ?? '아직 메시지가 없어요'}
-                    </div>
+                    </span>
                   </div>
-                  {r.last_at && <span className="room-time">{formatTime(r.last_at)}</span>}
+                  {r.last_at && <span className="row-meta">{formatListTime(r.last_at)}</span>}
                 </Link>
               </li>
-            ))}
-          </ul>
-        )}
-      </section>
+            )
+          })}
+        </ul>
+      )}
     </>
   )
 }

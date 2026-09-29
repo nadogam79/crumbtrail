@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Avatar } from '../components/Avatar'
 import { useAuth } from '../context/AuthContext'
+import { useConfirm } from '../context/ConfirmContext'
 import {
   addFriend,
   getOrCreateDm,
@@ -16,6 +17,7 @@ import {
 export function FriendsPage() {
   const { profile } = useAuth()
   const navigate = useNavigate()
+  const confirm = useConfirm()
   const [friends, setFriends] = useState<Friend[] | null>(null)
   const [query, setQuery] = useState('')
   // null: 아직 검색 안 함
@@ -76,8 +78,14 @@ export function FriendsPage() {
     })
   }
 
-  const handleRemove = (friend: Friend) => {
-    if (!window.confirm(`${friend.profile.name}님을 친구에서 삭제할까요? 기존 대화방은 남아요.`)) return
+  const handleRemove = async (friend: Friend) => {
+    const ok = await confirm({
+      title: `${friend.profile.name}님을 친구에서 삭제할까요?`,
+      message: '기존 대화방은 남아요.',
+      confirmLabel: '삭제',
+      danger: true,
+    })
+    if (!ok) return
     run(async () => {
       await removeFriend(friend.profile.id)
       await reload()

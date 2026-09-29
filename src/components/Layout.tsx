@@ -1,14 +1,22 @@
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { useConfirm } from '../context/ConfirmContext'
 
 export function Layout() {
   const { pathname } = useLocation()
   const { profile, signOut } = useAuth()
+  const confirm = useConfirm()
   const inMessenger = pathname.startsWith('/messenger')
   const inRoom = /^\/messenger\/[^/]+/.test(pathname)
 
-  const handleSignOut = () => {
-    if (window.confirm('로그아웃할까요? 진행 중인 귀가 추적도 종료돼요.')) signOut()
+  const handleSignOut = async () => {
+    const ok = await confirm({
+      title: '로그아웃할까요?',
+      message: '진행 중인 귀가 추적도 종료돼요.',
+      confirmLabel: '로그아웃',
+      danger: true,
+    })
+    if (ok) signOut()
   }
 
   const mainClass = !inMessenger ? 'app-main app-main-map' : inRoom ? 'app-main app-main-chat' : 'app-main'

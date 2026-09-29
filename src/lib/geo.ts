@@ -148,16 +148,29 @@ export function routeLegsOrStraight(route: RouteSettings): RouteLeg[] {
   ]
 }
 
-export const routePath = (route: RouteSettings) => routeLegsOrStraight(route).flatMap((leg) => leg.path)
+// 경로 객체는 바뀌지 않으므로(바뀌면 새 객체) 이어 붙인 경로를 경로마다 한 번만 만든다
+const routePathCache = new WeakMap<RouteSettings, Coordinate[]>()
+
+export function routePath(route: RouteSettings): Coordinate[] {
+  let path = routePathCache.get(route)
+  if (!path) {
+    path = routeLegsOrStraight(route).flatMap((leg) => leg.path)
+    routePathCache.set(route, path)
+  }
+  return path
+}
+
+// 위치 하나가 경로를 따라 어디쯤인지(m). 이탈 허용 거리 밖이면 진행으로 인정하지 않고 0.
+export function crumbProgressMeters(route: RouteSettings, coord: Coordinate): number {
+  const { alongMeters, offMeters } = projectOntoPath(coord, routePath(route))
+  return offMeters <= route.deviationThresholdMeters ? alongMeters : 0
+}
 
 // 경로를 따라 어디까지 왔는지(m). 경로에서 이탈 허용 거리 안에 있던 위치만 인정하고,
 // GPS가 흔들려 뒤로 튀어도 진행도가 줄지 않도록 지금까지의 최댓값을 쓴다.
+// 기록 전체를 다시 훑으므로 경로가 바뀔 때만 쓰고, 이동 중에는 crumbProgressMeters로 최댓값을 이어간다.
 export function routeProgressMeters(route: RouteSettings, breadcrumbs: Breadcrumb[]): number {
-  const path = routePath(route)
-  return breadcrumbs.reduce((max, crumb) => {
-    const { alongMeters, offMeters } = projectOntoPath(crumb.coord, path)
-    return offMeters <= route.deviationThresholdMeters ? Math.max(max, alongMeters) : max
-  }, 0)
+  return breadcrumbs.reduce((max, crumb) => Math.max(max, crumbProgressMeters(route, crumb.coord)), 0)
 }
 
 // 경로 앞부분 meters만큼을 이동수단을 유지한 채 잘라낸다 (재탐지 때 지나온 구간 보존용)

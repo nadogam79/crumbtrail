@@ -2,6 +2,7 @@ import { Fragment, useCallback, useEffect, useRef, useState, type FormEvent } fr
 import { Link, useNavigate } from 'react-router-dom'
 import { FriendPicker } from '../components/FriendPicker'
 import { useAuth } from '../context/AuthContext'
+import { useConfirm } from '../context/ConfirmContext'
 import {
   getRoom,
   inviteToRoom,
@@ -28,6 +29,7 @@ const dayKey = (iso: string) => new Date(iso).toDateString()
 export function ChatPage({ roomId }: { roomId: string }) {
   const { profile } = useAuth()
   const navigate = useNavigate()
+  const confirm = useConfirm()
   // undefined: 불러오는 중, null: 없거나 접근 불가
   const [room, setRoom] = useState<RoomDetail | null | undefined>(undefined)
   const [messages, setMessages] = useState<Message[]>([])
@@ -108,8 +110,14 @@ export function ChatPage({ roomId }: { roomId: string }) {
       loadMessages()
     })
 
-  const handleLeave = () => {
-    if (!window.confirm('이 방에서 나갈까요? 다시 들어오려면 다른 멤버가 초대해야 해요.')) return
+  const handleLeave = async () => {
+    const ok = await confirm({
+      title: '이 방에서 나갈까요?',
+      message: '다시 들어오려면 다른 멤버가 초대해야 해요.',
+      confirmLabel: '나가기',
+      danger: true,
+    })
+    if (!ok) return
     run(async () => {
       await leaveRoom(roomId)
       navigate('/messenger')

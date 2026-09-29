@@ -1,15 +1,21 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTracking } from '../context/TrackingContext'
+import { useConfirm } from '../context/ConfirmContext'
 import { RouteMap } from '../components/RouteMap'
 import { AccountMenu } from '../components/AccountMenu'
 import { GuideModal } from '../components/GuideModal'
+import { Joystick } from '../components/Joystick'
 import { Modal } from '../components/Modal'
 import { StatusBadge } from '../components/StatusBadge'
-import { routeProgressMeters } from '../lib/geo'
+import { distanceMeters } from '../lib/geo'
 import { isGuideHiddenToday } from '../lib/guidePreference'
+import { onFakeMove, useJoystickEnabled } from '../lib/fakeGeolocation'
 import { ALERT_GRACE_MS, ALERT_REASON_LABEL, type Coordinate } from '../types'
 import { RouteSetupPage } from './RouteSetupPage'
+
+// 목적지와 이 거리 안이면 '도착했어요' 버튼에 불을 켠다. GPS 오차를 감안해 넉넉히 잡는다.
+const NEAR_DESTINATION_METERS = 50
 
 // 앱을 연(새로고침/로그인) 뒤 지도 화면에 처음 들어올 때 한 번만 가이드를 띄운다.
 let guideShownThisLoad = false
@@ -19,6 +25,7 @@ export function MapPage() {
     status,
     route,
     breadcrumbs,
+    progressMeters,
     simMinutesElapsed,
     alert,
     dispatchNotice,
@@ -29,6 +36,7 @@ export function MapPage() {
     stopTracking,
   } = useTracking()
   const navigate = useNavigate()
+  const confirm = useConfirm()
   const [modalOpen, setModalOpen] = useState(false)
   const [guideOpen, setGuideOpen] = useState(false)
 
@@ -40,6 +48,7 @@ export function MapPage() {
 
   // 대기 중에는 지도 기본 위치를 현재 위치로. 추적 중에는 breadcrumb이 현재 위치가 된다.
   const [idleLocation, setIdleLocation] = useState<Coordinate | null>(null)
+  const joystick = useJoystickEnabled()
 
   useEffect(() => {
     if (status !== 'idle' || !navigator.geolocation) return
@@ -52,7 +61,13 @@ export function MapPage() {
       () => {}, // 권한 거부 등이면 기본 위치(서울시청)를 그대로 보여준다
       { timeout: 8000 },
     )
-  }, [status])
+  }, [status, joystick])
+
+  // 대기 중에는 watchPosition이 없으므로 조이스틱 이동을 직접 따라간다
+  useEffect(() => {
+    if (status !== 'idle' || !joystick) return
+    return onFakeMove(setIdleLocation)
+  }, [status, joystick])
 
   const current = breadcrumbs.at(-1)?.coord ?? (status === 'idle' ? idleLocation : null)
   const [recenterKey, setRecenterKey] = useState(0)
@@ -70,11 +85,6 @@ export function MapPage() {
   const graceLeftMs = sendAt === null ? 0 : Math.max(0, sendAt - now)
   const graceLeftSec = Math.ceil(graceLeftMs / 1000)
 
-  // 경로를 따라 어디까지 왔는지(m). 지나온 구간 회색 처리와 빵 조각 지남 표시에 쓴다.
-  const progressMeters = useMemo(
-    () => (route && status !== 'idle' ? routeProgressMeters(route, breadcrumbs) : 0),
-    [route, breadcrumbs, status],
-  )
 
   // GPS를 캐시 없이 새로 받아 내 위치를 다시 계산하고 지도를 그쪽으로 옮긴다.
   // 추적 중이면 받은 위치가 기록에도 들어간다. 실패하면 마지막 위치로만 옮긴다.
@@ -93,21 +103,37 @@ export function MapPage() {
   const canReroute = status === 'active' && route?.source !== 'transit'
   const handleReroute = async () => {
     if (rerouting) return
-    if (!window.confirm('현재 위치에서 목적지까지 도보 경로를 다시 찾을까요? 지나온 경로와 빵 조각은 그대로 둬요.'))
-      return
+    const ok = await confirm({
+      title: '경로를 다시 찾을까요?',
+      message: '현재 위치에서 목적지까지 도보 경로를 다시 찾아요. 지나온 경로와 빵 조각은 그대로 둬요.',
+      confirmLabel: '다시 찾기',
+    })
+    if (!ok) return
     setRerouting(true)
     await reroute()
     setRerouting(false)
   }
 
-  const handleArrive = () => {
-    if (window.confirm('도착 처리할까요? 비상 연락망에 도착 메시지가 전송돼요.')) arrive()
+  const nearDestination =
+    status !== 'idle' && !!route && !!current && distanceMeters(current, route.destination) <= NEAR_DESTINATION_METERS
+
+  const handleArrive = async () => {
+    const ok = await confirm({
+      title: '도착 처리할까요?',
+      message: '비상 연락망에 도착 메시지가 전송돼요.',
+      confirmLabel: '도착했어요',
+    })
+    if (ok) arrive()
   }
 
-  const handleStop = () => {
-    if (window.confirm('이동을 중단할까요? 지금까지의 경로 기록이 초기화되고 비상 연락망에 중단 메시지가 전송돼요.')) {
-      stopTracking()
-    }
+  const handleStop = async () => {
+    const ok = await confirm({
+      title: '이동을 중단할까요?',
+      message: '지금까지의 경로 기록이 초기화되고 비상 연락망에 중단 메시지가 전송돼요.',
+      confirmLabel: '중단',
+      danger: true,
+    })
+    if (ok) stopTracking()
   }
 
   return (
@@ -118,7 +144,7 @@ export function MapPage() {
         current={current}
         legs={route?.legs}
         recenterKey={recenterKey}
-        progressMeters={progressMeters}
+        progressMeters={status !== 'idle' ? progressMeters : 0}
         crumbIntervalMeters={route?.crumbIntervalMeters}
         className="route-map route-map-full"
       />
@@ -228,7 +254,11 @@ export function MapPage() {
         )}
 
         {status !== 'idle' && !graceActive && (
-          <button type="button" className="floating-nav-btn" onClick={handleArrive}>
+          <button
+            type="button"
+            className={`floating-nav-btn ${nearDestination ? 'floating-nav-btn-primary arrive-btn-near' : ''}`}
+            onClick={handleArrive}
+          >
             도착했어요
           </button>
         )}
@@ -253,6 +283,8 @@ export function MapPage() {
           </button>
         )}
       </div>
+
+      {joystick && !graceActive && <Joystick />}
 
       {guideOpen && <GuideModal onClose={() => setGuideOpen(false)} />}
 

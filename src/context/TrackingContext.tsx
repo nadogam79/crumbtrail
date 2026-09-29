@@ -13,6 +13,7 @@ import type { AlertInfo, AlertReason, Breadcrumb, Coordinate, RouteLeg, RouteSet
 import { ALERT_GRACE_MS, ALERT_REASON_LABEL } from '../types'
 import {
   checkpointIntervalMeters,
+  crumbProgressMeters,
   distanceMeters,
   legsUpTo,
   pathLengthMeters,
@@ -46,6 +47,8 @@ interface TrackingState {
   startedAt: number | null
   simMinutesElapsed: number
   breadcrumbs: Breadcrumb[]
+  // 경로를 따라 지나온 거리(m). 위치가 올 때마다 기록 전체를 다시 훑지 않도록 최댓값을 이어서 갱신한다.
+  progressMeters: number
   alert: AlertInfo | null
 }
 
@@ -70,6 +73,7 @@ const initialState: TrackingState = {
   startedAt: null,
   simMinutesElapsed: 0,
   breadcrumbs: [],
+  progressMeters: 0,
   alert: null,
 }
 
@@ -85,14 +89,16 @@ function reducer(state: TrackingState, action: Action): TrackingState {
         startedAt: action.startedAt,
         simMinutesElapsed: 0,
         breadcrumbs: [{ coord: action.route.origin, timestamp: 0 }],
+        progressMeters: crumbProgressMeters(action.route, action.route.origin),
         alert: null,
       }
     case 'ADD_BREADCRUMB':
       // 경보 중에도 위치는 계속 기록한다 (지인에게 최신 위치가 필요하다)
-      if (!isTracking(state.status)) return state
+      if (!isTracking(state.status) || !state.route) return state
       return {
         ...state,
         breadcrumbs: [...state.breadcrumbs, action.breadcrumb],
+        progressMeters: Math.max(state.progressMeters, crumbProgressMeters(state.route, action.breadcrumb.coord)),
         simMinutesElapsed: action.simMinutesElapsed,
       }
     case 'TRIGGER_ALERT':
@@ -103,7 +109,10 @@ function reducer(state: TrackingState, action: Action): TrackingState {
       // '나 괜찮아'는 경보만 끄고 추적은 이어간다
       return state.status === 'alert' ? { ...state, status: 'active', alert: null } : state
     case 'REROUTE':
-      return isTracking(state.status) ? { ...state, route: action.route } : state
+      // 경로가 바뀌면 지나온 거리도 새 경로 기준으로 한 번 다시 잰다
+      return isTracking(state.status)
+        ? { ...state, route: action.route, progressMeters: routeProgressMeters(action.route, state.breadcrumbs) }
+        : state
     case 'RESET_SESSION':
       return initialState
     default:
@@ -345,8 +354,8 @@ export function TrackingProvider({ children }: { children: ReactNode }) {
     const current = stateRef.current
     if (!isTracking(current.status) || current.route !== before) return
     // 방금 받은 현위치가 아직 상태에 반영되지 않았을 수 있어 함께 넣어 진행도를 잰다
-    const crumbs = [...current.breadcrumbs, { coord, timestamp: 0 }]
-    const passedLegs = legsUpTo(routeLegsOrStraight(before), routeProgressMeters(before, crumbs))
+    const progress = Math.max(current.progressMeters, crumbProgressMeters(before, coord))
+    const passedLegs = legsUpTo(routeLegsOrStraight(before), progress)
     // 지름길 등으로 지나온 경로 끝과 새 경로 시작이 떨어져 있으면 그 사이를 이어준다
     const passedEnd = passedLegs.at(-1)?.path.at(-1) ?? before.origin
     const newStart = result.legs[0]?.path[0] ?? coord

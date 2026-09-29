@@ -1,12 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
+import { useConfirm } from '../context/ConfirmContext'
 import { Avatar } from './Avatar'
+import { setJoystickEnabled, useJoystickEnabled } from '../lib/fakeGeolocation'
 import { getAlertEffectPrefs, setAlertEffectPrefs, type AlertEffectPrefs } from '../lib/alertEffects'
 
 export function AccountMenu() {
   const { profile, signOut } = useAuth()
   const [open, setOpen] = useState(false)
   const [prefs, setPrefs] = useState(getAlertEffectPrefs)
+  const joystick = useJoystickEnabled()
+  const confirm = useConfirm()
   const ref = useRef<HTMLDivElement>(null)
 
   // 바깥을 누르면 닫기
@@ -29,8 +33,14 @@ export function AccountMenu() {
 
   const notificationBlocked = 'Notification' in window && Notification.permission === 'denied'
 
-  const handleSignOut = () => {
-    if (window.confirm('로그아웃할까요? 진행 중인 귀가 추적도 종료돼요.')) signOut()
+  const handleSignOut = async () => {
+    const ok = await confirm({
+      title: '로그아웃할까요?',
+      message: '진행 중인 귀가 추적도 종료돼요.',
+      confirmLabel: '로그아웃',
+      danger: true,
+    })
+    if (ok) signOut()
   }
 
   return (
@@ -75,6 +85,19 @@ export function AccountMenu() {
                 시스템 알림이 차단돼 있어요. 브라우저 설정에서 허용해주세요.
               </span>
             )}
+          </div>
+          <div className="account-settings">
+            <span className="account-settings-title">테스트 전용</span>
+            <label className="account-toggle">
+              조이스틱으로 이동
+              <input
+                type="checkbox"
+                role="switch"
+                className="switch"
+                checked={joystick}
+                onChange={() => setJoystickEnabled(!joystick)}
+              />
+            </label>
           </div>
           <button type="button" className="btn btn-secondary btn-small" onClick={handleSignOut}>
             로그아웃

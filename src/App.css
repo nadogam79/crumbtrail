@@ -1065,6 +1065,63 @@
   filter: grayscale(1);
 }
 
+/* 빵 조각을 지나는 순간: 파란 고리가 퍼지고 빵이 튀어 오르며 사라진다 (RouteMap의 CRUMB_BURST_MS와 맞춤) */
+.kakao-crumb-burst {
+  position: relative;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.kakao-crumb-burst > span:last-child {
+  animation: crumb-hop 0.9s ease-out forwards;
+}
+
+.kakao-crumb-burst-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 3px solid var(--accent);
+  animation: crumb-ring 0.9s ease-out forwards;
+}
+
+@keyframes crumb-hop {
+  0% {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+  40% {
+    transform: translateY(-18px) scale(1.6);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-30px) scale(1.2);
+    opacity: 0;
+  }
+}
+
+@keyframes crumb-ring {
+  from {
+    transform: scale(0.8);
+    opacity: 0.9;
+  }
+  to {
+    transform: scale(3);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kakao-crumb-burst {
+    display: none;
+  }
+}
+
 /* ── 하단 플로팅 Nav (지도/메신저 공통) ─────────────── */
 
 .floating-nav {
@@ -1119,6 +1176,27 @@
 
 .floating-nav-btn-danger:hover {
   background: #b91c1c;
+}
+
+/* 목적지 근처에 오면 '도착했어요'를 파랗게 켜고 빛이 퍼지게 한다. floating-nav가 overflow로 잘라내므로 패딩(6px) 안에서만 퍼진다 */
+.arrive-btn-near {
+  animation: arrive-glow 1.4s ease-in-out infinite;
+}
+
+@keyframes arrive-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(37, 110, 244, 0.55);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(37, 110, 244, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .arrive-btn-near {
+    animation: none;
+  }
 }
 
 /* 이동 중단: 글자 대신 정지(■) 아이콘만 둔 원형 버튼 */
@@ -1222,6 +1300,83 @@
 
   .modal-compact {
     max-width: 420px;
+  }
+}
+
+/* ── 확인창 (window.confirm 대체, ConfirmContext) ───── */
+
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(30, 33, 36, 0.45);
+  animation: confirm-fade 0.15s ease-out;
+}
+
+.confirm-dialog {
+  width: 100%;
+  max-width: 340px;
+  padding: 24px 20px 16px;
+  border-radius: 16px;
+  background: var(--bg);
+  box-shadow: 0 12px 40px rgba(30, 33, 36, 0.2);
+  box-sizing: border-box;
+  text-align: center;
+  animation: confirm-pop 0.18s ease-out;
+}
+
+.confirm-title {
+  display: block;
+  font-size: 17px;
+  color: var(--text-h);
+  word-break: keep-all;
+}
+
+.confirm-message {
+  margin: 8px 0 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-sub);
+  word-break: keep-all;
+}
+
+.confirm-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.btn-danger-solid {
+  background: var(--danger);
+  color: #fff;
+}
+
+.btn-danger-solid:hover:not(:disabled) {
+  background: #b91c1c;
+}
+
+@keyframes confirm-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes confirm-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .confirm-overlay,
+  .confirm-dialog {
+    animation: none;
   }
 }
 
@@ -1694,4 +1849,51 @@ label.list-row {
 
 .composer .btn {
   border-radius: 999px;
+}
+
+/* 테스트용 조이스틱: 좌하단, 내 위치 버튼과 같은 높이 */
+.joystick {
+  position: absolute;
+  left: 16px;
+  bottom: 96px;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.joystick-base {
+  width: 108px;
+  height: 108px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--bg) 80%, transparent);
+  box-shadow: var(--shadow);
+  touch-action: none;
+  user-select: none;
+  cursor: grab;
+}
+
+.joystick-knob {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: var(--shadow);
+  pointer-events: none;
+}
+
+.joystick-speed {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--text-h);
+  font-size: 12px;
+  box-shadow: var(--shadow);
+  cursor: pointer;
 }

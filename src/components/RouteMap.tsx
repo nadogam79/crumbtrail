@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { loadKakaoMaps } from '../lib/kakaoMaps'
-import { pathLengthMeters, sampleAlongPath, splitPathAt } from '../lib/geo'
+import { checkpointIntervalMeters, pathLengthMeters, sampleAlongPath, splitPathAt } from '../lib/geo'
 import type { Coordinate, RouteLeg, TransitMode } from '../types'
 
 interface RouteMapProps {
@@ -12,14 +12,10 @@ interface RouteMapProps {
   recenterKey?: number
   // 경로 시작점부터 이미 지나온 거리(m). 이 지점까지는 회색으로 그린다
   progressMeters?: number
+  // 빵 조각 간격(m). 없으면 경로 길이로 정한다
+  crumbIntervalMeters?: number
   className?: string
 }
-
-// 빵조각(🍞) 간격: 기본 200m, 경로가 길면 전체 개수가 MAX_CRUMBS를 넘지 않도록 간격을 늘린다
-const MIN_CRUMB_INTERVAL_METERS = 200
-const MAX_CRUMBS = 30
-
-const crumbInterval = (totalMeters: number) => Math.max(MIN_CRUMB_INTERVAL_METERS, totalMeters / MAX_CRUMBS)
 
 const DEFAULT_CENTER: Coordinate = { lat: 37.5665, lng: 126.978 } // 서울시청 (지도 초기값)
 
@@ -38,6 +34,7 @@ export function RouteMap({
   legs,
   recenterKey,
   progressMeters,
+  crumbIntervalMeters,
   className = 'route-map',
 }: RouteMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -123,23 +120,24 @@ export function RouteMap({
 
     // 실제 경로를 못 받았으면 출발-도착 직선을 추정 경로(점선)로 그린다
     const hasRealLegs = !!legs && legs.some((l) => l.path.length > 1)
-    const drawLegs: { mode: TransitMode; path: Coordinate[]; estimated?: boolean }[] = hasRealLegs
-      ? legs!.filter((l) => l.path.length > 1)
-      : [{ mode: 'WALK', path: [origin, destination], estimated: true }]
+    // 추정 직선과 재탐지 연결 구간은 점선으로 그린다
+    const drawLegs: { mode: TransitMode; path: Coordinate[]; dashed?: boolean }[] = hasRealLegs
+      ? legs!.filter((l) => l.path.length > 1).map((l) => ({ ...l, dashed: l.connector }))
+      : [{ mode: 'WALK', path: [origin, destination], dashed: true }]
 
     const passed = progressMeters ?? 0
     let legStart = 0
     drawLegs.forEach((leg) => {
       const [done, remaining] = splitPathAt(leg.path, passed - legStart)
-      line(done, { color: PASSED_COLOR, dashed: leg.estimated }, 1)
-      line(remaining, { color: LEG_COLOR[leg.mode], dashed: leg.estimated }, 3)
+      line(done, { color: PASSED_COLOR, dashed: leg.dashed }, 1)
+      line(remaining, { color: LEG_COLOR[leg.mode], dashed: leg.dashed }, 3)
       legStart += pathLengthMeters(leg.path)
     })
 
     // 빵조각은 이동수단과 상관없이 전체 경로를 이어서 뿌린다. leg별로 뿌리면 버스/지하철
     // 구간과 200m보다 짧은 도보 구간에는 하나도 찍히지 않는다. 지나온 빵조각은 흐리게.
     const fullPath = drawLegs.flatMap((leg) => leg.path)
-    const interval = crumbInterval(pathLengthMeters(fullPath))
+    const interval = crumbIntervalMeters ?? checkpointIntervalMeters(pathLengthMeters(fullPath))
     sampleAlongPath(fullPath, interval).forEach((c, i) => {
       const isPassed = (i + 1) * interval <= passed
       show(
@@ -150,7 +148,7 @@ export function RouteMap({
         }),
       )
     })
-  }, [mapReady, origin, destination, legs, progressMeters])
+  }, [mapReady, origin, destination, legs, progressMeters, crumbIntervalMeters])
 
   // 경로가 바뀔 때만 전체 경로가 보이도록 지도 범위를 맞춘다
   useEffect(() => {
@@ -175,7 +173,8 @@ export function RouteMap({
     const position = new kakao.maps.LatLng(current.lat, current.lng)
     currentOverlayRef.current = new kakao.maps.CustomOverlay({
       position,
-      content: '<div class="kakao-me"><span class="kakao-pin-pulse"></span><span class="kakao-pin-current"></span></div>',
+      content:
+        '<div class="kakao-me"><span class="kakao-pin-pulse"></span><span class="kakao-pin-current"></span></div>',
       zIndex: 10,
     })
     currentOverlayRef.current.setMap(map)

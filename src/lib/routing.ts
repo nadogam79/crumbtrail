@@ -12,7 +12,12 @@ export class RouteError extends Error {
 
 // Calls the Supabase Edge Function that proxies Tmap (see supabase/functions/route).
 // No supabase-js needed — it's a plain HTTPS endpoint guarded by the anon key.
-export async function fetchRoute(origin: Coordinate, destination: Coordinate): Promise<RouteResult> {
+// pedestrianOnly: 대중교통 조회 없이 보행자 경로만 받는다 (이동 중 경로 재탐지용)
+export async function fetchRoute(
+  origin: Coordinate,
+  destination: Coordinate,
+  { pedestrianOnly = false }: { pedestrianOnly?: boolean } = {},
+): Promise<RouteResult> {
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
   const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
@@ -26,6 +31,7 @@ export async function fetchRoute(origin: Coordinate, destination: Coordinate): P
     toLat: String(destination.lat),
     toLng: String(destination.lng),
   })
+  if (pedestrianOnly) params.set('mode', 'pedestrian')
 
   const res = await fetch(`${supabaseUrl}/functions/v1/route?${params}`, {
     headers: { Authorization: `Bearer ${anonKey}`, apikey: anonKey },

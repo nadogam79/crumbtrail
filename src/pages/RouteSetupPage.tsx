@@ -94,7 +94,8 @@ export function RouteSetupPage({ onStarted }: RouteSetupPageProps) {
         if (!cancelled) setRoute(result)
       })
       .catch((err) => {
-        if (!cancelled) setRoutingFailure(err instanceof RouteError && err.code === 'QUOTA_EXCEEDED' ? 'quota' : 'error')
+        if (!cancelled)
+          setRoutingFailure(err instanceof RouteError && err.code === 'QUOTA_EXCEEDED' ? 'quota' : 'error')
       })
       .finally(() => {
         if (!cancelled) setRouting(false)
@@ -163,6 +164,7 @@ export function RouteSetupPage({ onStarted }: RouteSetupPageProps) {
       deviationThresholdMeters,
       stillnessThresholdMinutes,
       legs: route?.legs,
+      source: route?.source,
     })
     onStarted()
   }

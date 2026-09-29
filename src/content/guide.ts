@@ -7,7 +7,7 @@ export interface GuideStep {
 }
 
 export const GUIDE = {
-  title: 'CrumbTrail 사용 가이드',
+  title: '실종빵프로맵 사용 가이드',
   intro: '귀가 중 이상이 감지되면 지정한 친구에게 자동으로 알려요.',
   steps: [
     {

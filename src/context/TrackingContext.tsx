@@ -9,16 +9,35 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import type { AlertInfo, AlertReason, Breadcrumb, Coordinate, RouteSettings, SessionStatus } from '../types'
+import type { AlertInfo, AlertReason, Breadcrumb, Coordinate, RouteLeg, RouteSettings, SessionStatus } from '../types'
 import { ALERT_GRACE_MS, ALERT_REASON_LABEL } from '../types'
-import { distanceMeters, distanceToPolylineMeters, distanceToRouteMeters } from '../lib/geo'
+import {
+  checkpointIntervalMeters,
+  distanceMeters,
+  legsUpTo,
+  pathLengthMeters,
+  routeLegsOrStraight,
+  routePath,
+  routeProgressMeters,
+} from '../lib/geo'
+import { fetchRoute, RouteError } from '../lib/routing'
 import { sendAutoAlert } from '../lib/messenger'
 import { fireAlertEffects, prepareAlertEffects } from '../lib/alertEffects'
+import { evaluateFix, pickAlert } from '../lib/anomaly'
 
 const STILL_EPSILON_METERS = 5
+// 경로 재탐지 때 이보다 멀리 떨어진 지나온 경로 끝과 새 경로 시작만 점선으로 잇는다
+const CONNECTOR_MIN_METERS = 5
 // 지도 상단 발송 결과 알림이 자동으로 사라지기까지의 시간
 const DISPATCH_NOTICE_MS = 5000
 const GPS_OPTIONS: PositionOptions = { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
+
+// 추적 중 GPS를 못 받을 때 지도 상단에 띄우는 안내 (GeolocationPositionError.code 기준)
+const GPS_ERROR_TEXT: Record<number, string> = {
+  1: '위치 권한이 꺼져 있어 추적할 수 없어요. 브라우저 설정에서 위치를 허용해주세요.',
+  2: 'GPS 신호를 받지 못하고 있어요. 이동 기록이 멈춰 있을 수 있어요.',
+  3: 'GPS 신호를 받지 못하고 있어요. 이동 기록이 멈춰 있을 수 있어요.',
+}
 
 interface TrackingState {
   status: SessionStatus
@@ -41,6 +60,7 @@ type Action =
   | { type: 'ADD_BREADCRUMB'; breadcrumb: Breadcrumb; simMinutesElapsed: number }
   | { type: 'TRIGGER_ALERT'; alert: AlertInfo }
   | { type: 'ALERT_SENT' }
+  | { type: 'REROUTE'; route: RouteSettings }
   | { type: 'RESOLVE_ALERT' }
   | { type: 'RESET_SESSION' }
 
@@ -82,6 +102,8 @@ function reducer(state: TrackingState, action: Action): TrackingState {
     case 'RESOLVE_ALERT':
       // '나 괜찮아'는 경보만 끄고 추적은 이어간다
       return state.status === 'alert' ? { ...state, status: 'active', alert: null } : state
+    case 'REROUTE':
+      return isTracking(state.status) ? { ...state, route: action.route } : state
     case 'RESET_SESSION':
       return initialState
     default:
@@ -94,6 +116,8 @@ interface TrackingContextValue extends TrackingState {
   startRoute: (route: RouteSettings) => void
   // GPS를 캐시 없이 새로 받아 현재 위치를 갱신한다. 추적 중이면 기록·판정에도 반영한다.
   relocate: () => Promise<Coordinate | null>
+  // 현위치부터 목적지까지 도보 경로를 다시 찾아 남은 구간만 바꾼다. 지나온 구간과 빵 조각은 그대로.
+  reroute: () => Promise<void>
   resolveAlert: () => void
   arrive: () => void
   stopTracking: () => void
@@ -187,43 +211,29 @@ export function TrackingProvider({ children }: { children: ReactNode }) {
         simMinutesElapsed: elapsed,
       })
 
-      const fullPath = route.legs?.flatMap((leg) => leg.path) ?? []
-      const deviationM =
-        fullPath.length > 1
-          ? distanceToPolylineMeters(coord, fullPath)
-          : distanceToRouteMeters(coord, route.origin, route.destination)
-      const deviated = deviationM > route.deviationThresholdMeters
-      const still = elapsed - lastMovedAtMinute >= route.stillnessThresholdMinutes
-
-      if (!deviated) armed.deviation = true
-      if (!still) armed.stillness = true
+      const evaluation = evaluateFix(coord, route, elapsed, lastMovedAtMinute)
+      if (!evaluation.deviated) armed.deviation = true
+      if (!evaluation.still) armed.stillness = true
 
       if (alertPending || current.status !== 'active') return
 
-      if (deviated && armed.deviation) {
-        triggerAlert('deviation', `예상 경로에서 약 ${Math.round(deviationM)}m 벗어났어요.`, elapsed, coord)
-        return
-      }
-
-      if (still && armed.stillness) {
-        triggerAlert('stillness', `${route.stillnessThresholdMinutes}분 이상 위치가 움직이지 않았어요.`, elapsed, coord)
-        return
-      }
-
-      if (elapsed > route.etaMinutes + route.stillnessThresholdMinutes && armed.overdue) {
-        triggerAlert(
-          'overdue',
-          `예상 도착 시간(${route.etaMinutes}분)이 지났는데 도착하지 않았어요.`,
-          elapsed,
-          coord,
-        )
-      }
+      const next = pickAlert(evaluation, armed, route)
+      if (next) triggerAlert(next.reason, next.detail, elapsed, coord)
     }
 
+    // GPS 실패는 같은 종류가 이어지는 동안 한 번만 알리고, 위치를 다시 받으면 초기화한다
+    let lastGpsError: number | null = null
     handleFixRef.current = handleFix
     const watchId = navigator.geolocation.watchPosition(
-      (pos) => handleFix({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-      undefined,
+      (pos) => {
+        lastGpsError = null
+        handleFix({ lat: pos.coords.latitude, lng: pos.coords.longitude })
+      },
+      (err) => {
+        if (err.code === lastGpsError) return
+        lastGpsError = err.code
+        setDispatchNotice({ text: GPS_ERROR_TEXT[err.code] ?? GPS_ERROR_TEXT[2], failed: true })
+      },
       GPS_OPTIONS,
     )
 
@@ -233,18 +243,49 @@ export function TrackingProvider({ children }: { children: ReactNode }) {
     }
   }, [tracking, notify])
 
+  // 이동 중에는 화면이 꺼지지 않게 한다. 화면이 꺼지면 브라우저가 GPS 추적과 경보 타이머를 멈추기 때문.
+  // 다른 탭/앱에 갔다 오면 잠금이 풀리므로 다시 요청한다.
+  useEffect(() => {
+    if (!tracking || !('wakeLock' in navigator)) return
+    let lock: WakeLockSentinel | null = null
+    let cancelled = false
+    const request = async () => {
+      try {
+        const next = await navigator.wakeLock.request('screen')
+        if (cancelled) void next.release()
+        else lock = next
+      } catch {
+        // 배터리 절약 모드 등으로 거부되면 그냥 넘어간다
+      }
+    }
+    const handleVisibility = () => {
+      // 숨겨질 때 브라우저가 풀어둔 경우에만 다시 잡는다
+      if (document.visibilityState === 'visible' && (!lock || lock.released)) void request()
+    }
+    void request()
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => {
+      cancelled = true
+      document.removeEventListener('visibilitychange', handleVisibility)
+      void lock?.release()
+    }
+  }, [tracking])
+
   const lastCoord = () => stateRef.current.breadcrumbs.at(-1)?.coord ?? null
 
   // 경보 유예 타이머: 시간이 다 되면 그때 비상 연락망에 보낸다. 해제/종료되면 sendAt이 바뀌어 취소된다.
   const sendAt = state.alert?.sendAt ?? null
   useEffect(() => {
     if (sendAt === null) return
-    const timer = setTimeout(() => {
-      const pending = pendingAlertRef.current
-      pendingAlertRef.current = null
-      dispatch({ type: 'ALERT_SENT' })
-      if (pending) notify(pending.label, pending.body, lastCoord() ?? pending.coord)
-    }, Math.max(0, sendAt - Date.now()))
+    const timer = setTimeout(
+      () => {
+        const pending = pendingAlertRef.current
+        pendingAlertRef.current = null
+        dispatch({ type: 'ALERT_SENT' })
+        if (pending) notify(pending.label, pending.body, lastCoord() ?? pending.coord)
+      },
+      Math.max(0, sendAt - Date.now()),
+    )
     return () => clearTimeout(timer)
   }, [sendAt, notify])
 
@@ -279,6 +320,58 @@ export function TrackingProvider({ children }: { children: ReactNode }) {
     [],
   )
 
+  const reroute = useCallback(async () => {
+    const coord = await relocate()
+    const before = stateRef.current.route
+    if (!coord || !before) {
+      if (!coord) setDispatchNotice({ text: '경로 재탐지: 현재 위치를 받지 못했어요.', failed: true })
+      return
+    }
+    let result
+    try {
+      result = await fetchRoute(coord, before.destination, { pedestrianOnly: true })
+    } catch (err) {
+      const quota = err instanceof RouteError && err.code === 'QUOTA_EXCEEDED'
+      setDispatchNotice({
+        text: quota
+          ? '경로 재탐지: 오늘 경로 조회 한도를 다 썼어요. 기존 경로를 유지해요.'
+          : '경로 재탐지: 경로를 찾지 못해 기존 경로를 유지해요.',
+        failed: true,
+      })
+      return
+    }
+
+    // 조회하는 동안 도착/중단했으면 버린다
+    const current = stateRef.current
+    if (!isTracking(current.status) || current.route !== before) return
+    // 방금 받은 현위치가 아직 상태에 반영되지 않았을 수 있어 함께 넣어 진행도를 잰다
+    const crumbs = [...current.breadcrumbs, { coord, timestamp: 0 }]
+    const passedLegs = legsUpTo(routeLegsOrStraight(before), routeProgressMeters(before, crumbs))
+    // 지름길 등으로 지나온 경로 끝과 새 경로 시작이 떨어져 있으면 그 사이를 이어준다
+    const passedEnd = passedLegs.at(-1)?.path.at(-1) ?? before.origin
+    const newStart = result.legs[0]?.path[0] ?? coord
+    const gapMeters = distanceMeters(passedEnd, newStart)
+    const connector: RouteLeg[] =
+      gapMeters > CONNECTOR_MIN_METERS
+        ? [{ mode: 'WALK', path: [passedEnd, newStart], distanceMeters: gapMeters, minutes: 0, connector: true }]
+        : []
+    const elapsedMinutes = current.startedAt ? (Date.now() - current.startedAt) / 60000 : 0
+    dispatch({
+      type: 'REROUTE',
+      route: {
+        ...before,
+        legs: [...passedLegs, ...connector, ...result.legs],
+        etaMinutes: Math.max(1, Math.round(elapsedMinutes + result.totalMinutes)),
+        crumbIntervalMeters:
+          before.crumbIntervalMeters ?? checkpointIntervalMeters(pathLengthMeters(routePath(before))),
+      },
+    })
+    setDispatchNotice({
+      text: `경로를 다시 찾았어요. 남은 시간 약 ${Math.max(1, Math.round(result.totalMinutes))}분.`,
+      failed: false,
+    })
+  }, [relocate])
+
   const resolveAlert = useCallback(() => {
     const alreadySent = stateRef.current.alert?.sendAt === null
     pendingAlertRef.current = null
@@ -301,8 +394,8 @@ export function TrackingProvider({ children }: { children: ReactNode }) {
   }, [notify])
 
   const value = useMemo<TrackingContextValue>(
-    () => ({ ...state, dispatchNotice, startRoute, relocate, resolveAlert, arrive, stopTracking }),
-    [state, dispatchNotice, startRoute, relocate, resolveAlert, arrive, stopTracking],
+    () => ({ ...state, dispatchNotice, startRoute, relocate, reroute, resolveAlert, arrive, stopTracking }),
+    [state, dispatchNotice, startRoute, relocate, reroute, resolveAlert, arrive, stopTracking],
   )
 
   return <TrackingContext.Provider value={value}>{children}</TrackingContext.Provider>

@@ -8,6 +8,8 @@
 //
 // Call from the frontend as:
 //   GET {SUPABASE_URL}/functions/v1/route?fromLat=..&fromLng=..&toLat=..&toLng=..
+//   &mode=pedestrian 을 붙이면 대중교통 조회 없이 보행자 경로만 조회한다 (이동 중 경로 재탐지용.
+//   대중교통 API는 하루 10회 한도라 재탐지에 쓰지 않는다).
 //
 // 대중교통 경로가 없으면(출발/도착이 너무 가까운 경우 등) Tmap 보행자 경로 API로 대체한다.
 // 대중교통 조회가 한도 초과 등으로 실패해도 직선 2km 이내면 보행자 경로를 시도한다.
@@ -199,6 +201,15 @@ Deno.serve(async (req) => {
 
     const origin = { lat: Number(fromLat), lng: Number(fromLng) }
     const destination = { lat: Number(toLat), lng: Number(toLng) }
+
+    if (url.searchParams.get('mode') === 'pedestrian') {
+      try {
+        return json(await fetchPedestrianRoute(appKey, origin, destination))
+      } catch (err) {
+        if (err instanceof QuotaExceededError) return quotaExceeded()
+        return json({ error: err instanceof Error ? err.message : '보행자 경로를 찾지 못했어요.' }, 502)
+      }
+    }
 
     const tmapRes = await fetch('https://apis.openapi.sk.com/transit/routes', {
       method: 'POST',

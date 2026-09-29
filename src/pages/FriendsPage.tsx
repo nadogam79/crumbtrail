@@ -67,7 +67,9 @@ export function FriendsPage() {
   // 체크박스가 바로 반응하도록 먼저 화면에 반영하고, 실패하면 서버 값으로 되돌린다.
   const toggleEmergency = (friend: Friend) => {
     const next = !friend.isEmergency
-    setFriends((prev) => prev?.map((f) => (f.profile.id === friend.profile.id ? { ...f, isEmergency: next } : f)) ?? null)
+    setFriends(
+      (prev) => prev?.map((f) => (f.profile.id === friend.profile.id ? { ...f, isEmergency: next } : f)) ?? null,
+    )
     setEmergency(friend.profile.id, next).catch((err: Error) => {
       setError(err.message)
       reload()
@@ -125,7 +127,12 @@ export function FriendsPage() {
                   {friendIds.has(r.id) ? (
                     <span className="row-tag">친구</span>
                   ) : (
-                    <button type="button" className="btn btn-primary btn-small" onClick={() => handleAdd(r)} disabled={busy}>
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-small"
+                      onClick={() => handleAdd(r)}
+                      disabled={busy}
+                    >
                       추가
                     </button>
                   )}

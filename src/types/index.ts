@@ -16,6 +16,8 @@ export interface RouteLeg {
   path: Coordinate[]
   distanceMeters: number
   minutes: number
+  // 경로 재탐지 때 지나온 경로 끝과 새 경로 시작을 잇는 구간 (지도에 점선으로 그린다)
+  connector?: boolean
 }
 
 export interface RouteResult {
@@ -36,6 +38,10 @@ export interface RouteSettings {
   // 실제 경로(보행/대중교통) 조회 결과. 조회 실패 시 없을 수 있고,
   // 그 경우 origin-destination 직선을 기준으로 이탈을 판정한다(폴백).
   legs?: RouteLeg[]
+  // 경로 출처. 대중교통 경로는 재탐지를 지원하지 않는다(TMAP 대중교통 API 하루 10회 한도)
+  source?: RouteResult['source']
+  // 빵 조각 간격(m). 재탐지로 경로 길이가 바뀌어도 이미 찍힌 빵 조각 위치가 그대로이도록 고정한다
+  crumbIntervalMeters?: number
 }
 
 export type AlertReason = 'deviation' | 'stillness' | 'overdue'

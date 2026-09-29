@@ -41,7 +41,7 @@ export function AuthPage() {
       <main className="app-main">
         <div className="page auth-page">
           <div className="auth-brand">
-            <h1>🍞 CrumbTrail</h1>
+            <h1>실종빵프로맵</h1>
             <p>{mode === 'signin' ? '안전한 귀가를 함께 지켜요.' : '이름과 아이디만으로 가입할 수 있어요.'}</p>
           </div>
           <section className="card">

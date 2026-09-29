@@ -176,7 +176,12 @@ export function ChatPage({ roomId }: { roomId: string }) {
             excludeIds={new Set(room.members.map((m) => m.id))}
           />
           <div className="field-row">
-            <button type="button" className="btn btn-primary btn-small" onClick={handleInvite} disabled={busy || selected.size === 0}>
+            <button
+              type="button"
+              className="btn btn-primary btn-small"
+              onClick={handleInvite}
+              disabled={busy || selected.size === 0}
+            >
               {selected.size}명 초대
             </button>
             <button type="button" className="btn btn-secondary btn-small" onClick={() => setInviting(false)}>

@@ -1121,6 +1121,16 @@
   background: #b91c1c;
 }
 
+/* 이동 중단: 글자 대신 정지(■) 아이콘만 둔 원형 버튼 */
+.floating-nav-btn-stop {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 40px;
+  padding: 0;
+}
+
 /* 경보 유예 중 '나 괜찮아': 밝은 띠가 남은 시간만큼 줄어든다.
    animationDuration/Delay는 MapPage가 남은 시간에 맞춰 넣는다 */
 .grace-btn {

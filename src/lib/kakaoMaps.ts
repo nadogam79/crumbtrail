@@ -18,9 +18,7 @@ export function loadKakaoMaps(): Promise<any> {
 
   const appkey = import.meta.env.VITE_KAKAO_JS_KEY
   if (!appkey) {
-    return Promise.reject(
-      new Error('카카오맵 키가 설정되지 않았어요. .env.local에 VITE_KAKAO_JS_KEY를 추가해주세요.'),
-    )
+    return Promise.reject(new Error('카카오맵 키가 설정되지 않았어요. .env.local에 VITE_KAKAO_JS_KEY를 추가해주세요.'))
   }
 
   loadPromise = new Promise((resolve, reject) => {

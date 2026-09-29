@@ -83,7 +83,13 @@ export async function searchProfiles(query: string, myId: string): Promise<Profi
 
   const [byHandle, byName] = await Promise.all([
     supabase.from('profiles').select('id, handle, name').eq('handle', handle).neq('id', myId),
-    supabase.from('profiles').select('id, handle, name').ilike('name', namePattern).neq('id', myId).order('name').limit(SEARCH_LIMIT),
+    supabase
+      .from('profiles')
+      .select('id, handle, name')
+      .ilike('name', namePattern)
+      .neq('id', myId)
+      .order('name')
+      .limit(SEARCH_LIMIT),
   ])
 
   const merged = [...unwrap(byHandle), ...unwrap(byName)] as Profile[]

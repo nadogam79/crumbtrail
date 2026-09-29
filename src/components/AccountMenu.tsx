@@ -52,14 +52,28 @@ export function AccountMenu() {
             <span className="account-settings-title">이상 신호 경보</span>
             <label className="account-toggle">
               진동
-              <input type="checkbox" role="switch" className="switch" checked={prefs.vibrate} onChange={() => togglePref('vibrate')} />
+              <input
+                type="checkbox"
+                role="switch"
+                className="switch"
+                checked={prefs.vibrate}
+                onChange={() => togglePref('vibrate')}
+              />
             </label>
             <label className="account-toggle">
               경고음
-              <input type="checkbox" role="switch" className="switch" checked={prefs.sound} onChange={() => togglePref('sound')} />
+              <input
+                type="checkbox"
+                role="switch"
+                className="switch"
+                checked={prefs.sound}
+                onChange={() => togglePref('sound')}
+              />
             </label>
             {notificationBlocked && (
-              <span className="account-settings-note">시스템 알림이 차단돼 있어요. 브라우저 설정에서 허용해주세요.</span>
+              <span className="account-settings-note">
+                시스템 알림이 차단돼 있어요. 브라우저 설정에서 허용해주세요.
+              </span>
             )}
           </div>
           <button type="button" className="btn btn-secondary btn-small" onClick={handleSignOut}>

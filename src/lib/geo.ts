@@ -1,4 +1,4 @@
-import type { Coordinate } from '../types'
+import type { Breadcrumb, Coordinate, RouteLeg, RouteSettings } from '../types'
 
 const EARTH_RADIUS_M = 6371000
 
@@ -12,9 +12,7 @@ export function distanceMeters(a: Coordinate, b: Coordinate): number {
   const lat1 = toRad(a.lat)
   const lat2 = toRad(b.lat)
 
-  const h =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2
   return 2 * EARTH_RADIUS_M * Math.asin(Math.sqrt(h))
 }
 
@@ -43,11 +41,7 @@ function distanceToSegmentMeters(point: Coordinate, a: Coordinate, b: Coordinate
 }
 
 // Straight-line origin->destination fallback, used when no real route path is available.
-export function distanceToRouteMeters(
-  point: Coordinate,
-  origin: Coordinate,
-  destination: Coordinate,
-): number {
+export function distanceToRouteMeters(point: Coordinate, origin: Coordinate, destination: Coordinate): number {
   return distanceToSegmentMeters(point, origin, destination)
 }
 
@@ -127,9 +121,58 @@ export function splitPathAt(path: Coordinate[], meters: number): [Coordinate[], 
     const segLen = distanceMeters(path[i], path[i + 1])
     if (travelled + segLen >= meters) {
       const cut = interpolate(path[i], path[i + 1], segLen === 0 ? 0 : (meters - travelled) / segLen)
-      return [[...path.slice(0, i + 1), cut], [cut, ...path.slice(i + 1)]]
+      return [
+        [...path.slice(0, i + 1), cut],
+        [cut, ...path.slice(i + 1)],
+      ]
     }
     travelled += segLen
   }
   return [path, []]
+}
+
+// 빵 조각(체크포인트) 간격: 기본 200m, 경로가 길면 전체 개수가 MAX_CRUMBS를 넘지 않도록 간격을 늘린다
+const MIN_CRUMB_INTERVAL_METERS = 200
+const MAX_CRUMBS = 30
+
+export const checkpointIntervalMeters = (totalMeters: number) =>
+  Math.max(MIN_CRUMB_INTERVAL_METERS, totalMeters / MAX_CRUMBS)
+
+// 이탈/진행도 판정에 쓰는 경로. 실제 경로를 못 받았으면 출발-도착 직선.
+export function routeLegsOrStraight(route: RouteSettings): RouteLeg[] {
+  const legs = route.legs?.filter((l) => l.path.length > 1) ?? []
+  if (legs.length > 0) return legs
+  const distance = distanceMeters(route.origin, route.destination)
+  return [
+    { mode: 'WALK', path: [route.origin, route.destination], distanceMeters: distance, minutes: route.etaMinutes },
+  ]
+}
+
+export const routePath = (route: RouteSettings) => routeLegsOrStraight(route).flatMap((leg) => leg.path)
+
+// 경로를 따라 어디까지 왔는지(m). 경로에서 이탈 허용 거리 안에 있던 위치만 인정하고,
+// GPS가 흔들려 뒤로 튀어도 진행도가 줄지 않도록 지금까지의 최댓값을 쓴다.
+export function routeProgressMeters(route: RouteSettings, breadcrumbs: Breadcrumb[]): number {
+  const path = routePath(route)
+  return breadcrumbs.reduce((max, crumb) => {
+    const { alongMeters, offMeters } = projectOntoPath(crumb.coord, path)
+    return offMeters <= route.deviationThresholdMeters ? Math.max(max, alongMeters) : max
+  }, 0)
+}
+
+// 경로 앞부분 meters만큼을 이동수단을 유지한 채 잘라낸다 (재탐지 때 지나온 구간 보존용)
+export function legsUpTo(legs: RouteLeg[], meters: number): RouteLeg[] {
+  const result: RouteLeg[] = []
+  let legStart = 0
+  for (const leg of legs) {
+    if (meters <= legStart) break
+    const length = pathLengthMeters(leg.path)
+    const [done] = splitPathAt(leg.path, meters - legStart)
+    if (done.length > 1) {
+      const ratio = length > 0 ? Math.min(1, (meters - legStart) / length) : 1
+      result.push({ ...leg, path: done, distanceMeters: leg.distanceMeters * ratio, minutes: leg.minutes * ratio })
+    }
+    legStart += length
+  }
+  return result
 }

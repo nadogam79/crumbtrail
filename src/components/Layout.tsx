@@ -22,7 +22,7 @@ export function Layout() {
     <div className="app-shell">
       {inMessenger && !inRoom && (
         <header className="app-header">
-          <span className="brand">🍞 CrumbTrail</span>
+          <span className="brand">실종빵프로맵</span>
           <span className="app-header-user">
             {profile?.name} <span className="handle">@{profile?.handle}</span>
             <button

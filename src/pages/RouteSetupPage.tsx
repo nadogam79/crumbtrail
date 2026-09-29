@@ -25,9 +25,6 @@ const DETOUR_FACTOR = 1.3
 const WALK_METERS_PER_MINUTE = 4000 / 60
 
 // 세부 설정 기본값.
-// TODO: 체크인은 이후 경로 위 체크포인트를 자동 생성하고 GPS가 그 지점에 도착하면 자동 체크되는 방식으로 바뀔 예정.
-// 그때 '체크인 주기'는 체크포인트 간격/도착 허용 반경 같은 설정으로 대체된다.
-const DEFAULT_CHECK_IN_INTERVAL_MINUTES = 10
 const DEFAULT_DEVIATION_THRESHOLD_METERS = 150
 const DEFAULT_STILLNESS_THRESHOLD_MINUTES = 8
 
@@ -53,7 +50,6 @@ export function RouteSetupPage({ onStarted }: RouteSetupPageProps) {
   const [routeAttempt, setRouteAttempt] = useState(0)
 
   const [destinationLabel, setDestinationLabel] = useState('')
-  const [checkInIntervalMinutes, setCheckInIntervalMinutes] = useState(DEFAULT_CHECK_IN_INTERVAL_MINUTES)
   const [deviationThresholdMeters, setDeviationThresholdMeters] = useState(DEFAULT_DEVIATION_THRESHOLD_METERS)
   const [stillnessThresholdMinutes, setStillnessThresholdMinutes] = useState(DEFAULT_STILLNESS_THRESHOLD_MINUTES)
 
@@ -164,7 +160,6 @@ export function RouteSetupPage({ onStarted }: RouteSetupPageProps) {
       origin,
       destination: destination.coord,
       etaMinutes,
-      checkInIntervalMinutes,
       deviationThresholdMeters,
       stillnessThresholdMinutes,
       legs: route?.legs,
@@ -274,18 +269,6 @@ export function RouteSetupPage({ onStarted }: RouteSetupPageProps) {
                 maxLength={40}
               />
               <small>친구에게 가는 알림에 표시돼요.</small>
-            </label>
-            <label className="setting-row">
-              <span>체크인 주기</span>
-              <span className="setting-input">
-                <input
-                  type="number"
-                  min={1}
-                  value={checkInIntervalMinutes}
-                  onChange={(e) => setCheckInIntervalMinutes(Number(e.target.value))}
-                />
-                분
-              </span>
             </label>
             <label className="setting-row">
               <span>경로 이탈 허용 거리</span>

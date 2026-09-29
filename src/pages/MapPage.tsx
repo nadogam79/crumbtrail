@@ -1,84 +1,120 @@
-import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { useTracking } from '../context/TrackingContext'
-import { RouteMap } from '../components/RouteMap'
-import { AccountMenu } from '../components/AccountMenu'
-import { GuideModal } from '../components/GuideModal'
-import { Modal } from '../components/Modal'
-import { StatusBadge } from '../components/StatusBadge'
-import { projectOntoPath } from '../lib/geo'
-import { isGuideHiddenToday } from '../lib/guidePreference'
-import type { Coordinate } from '../types'
-import { RouteSetupPage } from './RouteSetupPage'
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useTracking } from "../context/TrackingContext";
+import { RouteMap } from "../components/RouteMap";
+import { AccountMenu } from "../components/AccountMenu";
+import { GuideModal } from "../components/GuideModal";
+import { Modal } from "../components/Modal";
+import { StatusBadge } from "../components/StatusBadge";
+import { projectOntoPath } from "../lib/geo";
+import { isGuideHiddenToday } from "../lib/guidePreference";
+import { ALERT_GRACE_MS, ALERT_REASON_LABEL, type Coordinate } from "../types";
+import { RouteSetupPage } from "./RouteSetupPage";
 
 // 앱을 연(새로고침/로그인) 뒤 지도 화면에 처음 들어올 때 한 번만 가이드를 띄운다.
-let guideShownThisLoad = false
+let guideShownThisLoad = false;
 
 export function MapPage() {
-  const { status, route, breadcrumbs, simMinutesElapsed, dispatchNotice, checkIn, resolveAlert, arrive, stopTracking } =
-    useTracking()
-  const navigate = useNavigate()
-  const [modalOpen, setModalOpen] = useState(false)
-  const [guideOpen, setGuideOpen] = useState(false)
+  const {
+    status,
+    route,
+    breadcrumbs,
+    simMinutesElapsed,
+    alert,
+    dispatchNotice,
+    relocate,
+    resolveAlert,
+    arrive,
+    stopTracking,
+  } = useTracking();
+  const navigate = useNavigate();
+  const [modalOpen, setModalOpen] = useState(false);
+  const [guideOpen, setGuideOpen] = useState(false);
 
   useEffect(() => {
-    if (guideShownThisLoad || isGuideHiddenToday()) return
-    guideShownThisLoad = true
-    setGuideOpen(true)
-  }, [])
+    if (guideShownThisLoad || isGuideHiddenToday()) return;
+    guideShownThisLoad = true;
+    setGuideOpen(true);
+  }, []);
 
   // 대기 중에는 지도 기본 위치를 현재 위치로. 추적 중에는 breadcrumb이 현재 위치가 된다.
-  const [idleLocation, setIdleLocation] = useState<Coordinate | null>(null)
+  const [idleLocation, setIdleLocation] = useState<Coordinate | null>(null);
 
   useEffect(() => {
-    if (status !== 'idle' || !navigator.geolocation) return
+    if (status !== "idle" || !navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition(
-      (pos) => setIdleLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      (pos) =>
+        setIdleLocation({
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+        }),
       () => {}, // 권한 거부 등이면 기본 위치(서울시청)를 그대로 보여준다
       { timeout: 8000 },
-    )
-  }, [status])
+    );
+  }, [status]);
 
-  const current = breadcrumbs.at(-1)?.coord ?? (status === 'idle' ? idleLocation : null)
-  const [recenterKey, setRecenterKey] = useState(0)
+  const current =
+    breadcrumbs.at(-1)?.coord ?? (status === "idle" ? idleLocation : null);
+  const [recenterKey, setRecenterKey] = useState(0);
+  const [locating, setLocating] = useState(false);
+
+  // 경보 유예 중('나 괜찮아'를 기다리는 30초)이면 남은 시간을 1초 단위로 보여준다
+  const sendAt = status === "alert" ? (alert?.sendAt ?? null) : null;
+  const graceActive = sendAt !== null;
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (sendAt === null) return;
+    const timer = setInterval(() => setNow(Date.now()), 250);
+    return () => clearInterval(timer);
+  }, [sendAt]);
+  const graceLeftMs = sendAt === null ? 0 : Math.max(0, sendAt - now);
+  const graceLeftSec = Math.ceil(graceLeftMs / 1000);
 
   // 경로를 따라 어디까지 왔는지(m). 경로에서 이탈 허용 거리 안에 있던 위치만 인정하고,
   // GPS가 흔들려 뒤로 튀어도 진행도가 줄지 않도록 지금까지의 최댓값을 쓴다.
   const progressMeters = useMemo(() => {
-    if (!route || status === 'idle') return 0
-    const path = route.legs?.flatMap((leg) => leg.path) ?? []
-    const routePath = path.length > 1 ? path : [route.origin, route.destination]
+    if (!route || status === "idle") return 0;
+    const path = route.legs?.flatMap((leg) => leg.path) ?? [];
+    const routePath =
+      path.length > 1 ? path : [route.origin, route.destination];
     return breadcrumbs.reduce((max, crumb) => {
-      const { alongMeters, offMeters } = projectOntoPath(crumb.coord, routePath)
-      return offMeters <= route.deviationThresholdMeters ? Math.max(max, alongMeters) : max
-    }, 0)
-  }, [route, breadcrumbs, status])
+      const { alongMeters, offMeters } = projectOntoPath(
+        crumb.coord,
+        routePath,
+      );
+      return offMeters <= route.deviationThresholdMeters
+        ? Math.max(max, alongMeters)
+        : max;
+    }, 0);
+  }, [route, breadcrumbs, status]);
 
-  // 대기 중이면 위치를 새로 받아온 뒤, 추적 중이면 마지막 GPS 위치로 지도를 옮긴다
-  const handleLocate = () => {
-    if (status === 'idle' && navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          setIdleLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude })
-          setRecenterKey((k) => k + 1)
-        },
-        () => setRecenterKey((k) => k + 1),
-        { timeout: 8000 },
-      )
-      return
-    }
-    setRecenterKey((k) => k + 1)
-  }
+  // GPS를 캐시 없이 새로 받아 내 위치를 다시 계산하고 지도를 그쪽으로 옮긴다.
+  // 추적 중이면 받은 위치가 기록에도 들어간다. 실패하면 마지막 위치로만 옮긴다.
+  const handleLocate = async () => {
+    if (locating) return;
+    setLocating(true);
+    const coord = await relocate();
+    if (coord && status === "idle") setIdleLocation(coord);
+    setLocating(false);
+    setRecenterKey((k) => k + 1);
+  };
 
   const handleArrive = () => {
-    if (window.confirm('도착 처리할까요? 비상 연락망에 도착 메시지가 전송돼요.')) arrive()
-  }
+    if (
+      window.confirm("도착 처리할까요? 비상 연락망에 도착 메시지가 전송돼요.")
+    )
+      arrive();
+  };
 
   const handleStop = () => {
-    if (window.confirm('이동을 중단할까요? 지금까지의 경로 기록이 초기화되고 비상 연락망에 중단 메시지가 전송돼요.')) {
-      stopTracking()
+    if (
+      window.confirm(
+        "이동을 중단할까요? 지금까지의 경로 기록이 초기화되고 비상 연락망에 중단 메시지가 전송돼요.",
+      )
+    ) {
+      stopTracking();
     }
-  }
+  };
 
   return (
     <div className="map-page">
@@ -92,19 +128,47 @@ export function MapPage() {
         className="route-map route-map-full"
       />
 
-      <button type="button" className="map-locate-fab" onClick={handleLocate} aria-label="내 위치로 이동" title="내 위치로 이동">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <circle cx="12" cy="12" r="4" stroke="currentColor" strokeWidth="1.8" />
-          <path d="M12 2v3M12 19v3M2 12h3M19 12h3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <button
+        type="button"
+        className={`map-locate-fab ${locating ? "map-locate-fab-busy" : ""}`}
+        onClick={handleLocate}
+        disabled={locating}
+        aria-label="내 위치 다시 계산"
+        title="내 위치 다시 계산"
+      >
+        <svg
+          width="22"
+          height="22"
+          viewBox="0 0 24 24"
+          fill="none"
+          aria-hidden="true"
+        >
+          <circle
+            cx="12"
+            cy="12"
+            r="4"
+            stroke="currentColor"
+            strokeWidth="1.8"
+          />
+          <path
+            d="M12 2v3M12 19v3M2 12h3M19 12h3"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+          />
         </svg>
       </button>
 
-      <div className={`map-topbar ${status === 'alert' ? 'chip-alert' : ''}`}>
-        <span className="map-topbar-brand">🍞 CrumbTrail</span>
+      <div className={`map-topbar ${status === "alert" ? "chip-alert" : ""}`}>
+        <span className="map-topbar-brand">실종빵프로맵</span>
 
-        {status === 'idle' && <span className="map-topbar-info map-topbar-tagline">이상 신호가 감지되면 지인에게 바로 알려요</span>}
+        {status === "idle" && (
+          <span className="map-topbar-info map-topbar-tagline">
+            이상 신호가 감지되면 지인에게 바로 알려요
+          </span>
+        )}
 
-        {status !== 'idle' && route && (
+        {status !== "idle" && route && (
           <div className="map-topbar-info">
             <div className="map-topbar-info-text">
               <strong>{route.destinationLabel}</strong>
@@ -117,10 +181,32 @@ export function MapPage() {
         )}
 
         <div className="map-topbar-actions">
-          <button type="button" className="icon-btn" onClick={() => setGuideOpen(true)} aria-label="사용 가이드">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <circle cx="12" cy="12" r="9.25" stroke="currentColor" strokeWidth="1.5" />
-              <path d="M12 11v5.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+          <button
+            type="button"
+            className="icon-btn"
+            onClick={() => setGuideOpen(true)}
+            aria-label="사용 가이드"
+          >
+            <svg
+              width="22"
+              height="22"
+              viewBox="0 0 24 24"
+              fill="none"
+              aria-hidden="true"
+            >
+              <circle
+                cx="12"
+                cy="12"
+                r="9.25"
+                stroke="currentColor"
+                strokeWidth="1.5"
+              />
+              <path
+                d="M12 11v5.5"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+              />
               <circle cx="12" cy="7.75" r="1.1" fill="currentColor" />
             </svg>
           </button>
@@ -128,43 +214,91 @@ export function MapPage() {
         </div>
       </div>
 
-      {dispatchNotice && (
-        <div className={`dispatch-notice ${dispatchNotice.failed ? 'dispatch-notice-failed' : ''}`}>
-          {dispatchNotice.text}
-        </div>
-      )}
+      <div className="map-notices">
+        {status === "alert" && alert && (
+          <div className="alert-banner" role="alert">
+            <strong>⚠️ {ALERT_REASON_LABEL[alert.reason]} 감지</strong>
+            <span>{alert.message}</span>
+            <span>
+              {graceActive
+                ? `${graceLeftSec}초 안에 '나 괜찮아'를 누르지 않으면 비상 연락망에 알려요.`
+                : "비상 연락망에 알림을 보냈어요. 괜찮다면 아래 '나 괜찮아'를 눌러주세요."}
+            </span>
+          </div>
+        )}
+
+        {dispatchNotice && (
+          <div
+            className={`dispatch-notice ${dispatchNotice.failed ? "dispatch-notice-failed" : ""}`}
+          >
+            {dispatchNotice.text}
+          </div>
+        )}
+      </div>
 
       <div className="floating-nav">
-        {status === 'idle' && (
-          <button type="button" className="floating-nav-btn floating-nav-btn-primary" onClick={() => setModalOpen(true)}>
+        {status === "idle" && (
+          <button
+            type="button"
+            className="floating-nav-btn floating-nav-btn-primary"
+            onClick={() => setModalOpen(true)}
+          >
             목적지 설정
           </button>
         )}
 
-        {status === 'active' && (
-          <button type="button" className="floating-nav-btn" onClick={checkIn}>
-            체크인
+        {graceActive && (
+          // 버튼 배경이 남은 시간만큼 줄어든다. 다른 버튼은 유예 중에 숨긴다.
+          <button
+            key={sendAt}
+            type="button"
+            className="floating-nav-btn grace-btn"
+            style={{
+              animationDuration: `${ALERT_GRACE_MS}ms`,
+              animationDelay: `${graceLeftMs - ALERT_GRACE_MS}ms`,
+            }}
+            onClick={resolveAlert}
+          >
+            <span>나 괜찮아 · {graceLeftSec}초</span>
           </button>
         )}
 
-        {status === 'alert' && (
-          <button type="button" className="floating-nav-btn floating-nav-btn-primary" onClick={resolveAlert}>
+        {status === "alert" && !graceActive && (
+          <button
+            type="button"
+            className="floating-nav-btn floating-nav-btn-primary"
+            onClick={resolveAlert}
+          >
             나 괜찮아
           </button>
         )}
 
-        {status !== 'idle' && (
-          <button type="button" className="floating-nav-btn" onClick={handleArrive}>
+        {status !== "idle" && !graceActive && (
+          <button
+            type="button"
+            className="floating-nav-btn"
+            onClick={handleArrive}
+          >
             도착했어요
           </button>
         )}
 
-        <button type="button" className="floating-nav-btn" onClick={() => navigate('/messenger')}>
-          메신저
-        </button>
+        {!graceActive && (
+          <button
+            type="button"
+            className="floating-nav-btn"
+            onClick={() => navigate("/messenger")}
+          >
+            메신저
+          </button>
+        )}
 
-        {status !== 'idle' && (
-          <button type="button" className="floating-nav-btn floating-nav-btn-danger" onClick={handleStop}>
+        {status !== "idle" && !graceActive && (
+          <button
+            type="button"
+            className="floating-nav-btn floating-nav-btn-danger"
+            onClick={handleStop}
+          >
             이동 중단
           </button>
         )}
@@ -178,5 +312,5 @@ export function MapPage() {
         </Modal>
       )}
     </div>
-  )
+  );
 }

@@ -145,7 +145,7 @@ export function RouteMap({
       show(
         new kakao.maps.CustomOverlay({
           position: new kakao.maps.LatLng(c.lat, c.lng),
-          content: `<div class="kakao-crumb${isPassed ? ' kakao-crumb-passed' : ''}">🍞</div>`,
+          content: `<div class="kakao-crumb${isPassed ? ' kakao-crumb-passed' : ''}"><span>🍞</span></div>`,
           zIndex: 2,
         }),
       )

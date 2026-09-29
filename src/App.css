@@ -116,11 +116,6 @@
   color: var(--danger);
 }
 
-.status-resolved {
-  background: var(--success-bg);
-  color: var(--success);
-}
-
 .warning-text {
   color: var(--danger);
   font-size: 14px;
@@ -444,10 +439,88 @@
   color: var(--text-h);
 }
 
-.account-dropdown span {
+.account-dropdown > span {
   font-size: 13px;
   color: var(--text-sub);
   margin-bottom: 10px;
+}
+
+/* 계정 메뉴 안 경보 효과 토글 */
+.account-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 2px 0 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.account-settings-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-sub);
+}
+
+.account-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 14px;
+  color: var(--text-h);
+  cursor: pointer;
+}
+
+/* 온오프 스위치: 체크박스를 트랙 + 동그란 손잡이로 그린다 */
+.switch {
+  appearance: none;
+  position: relative;
+  flex-shrink: 0;
+  width: 44px;
+  height: 26px;
+  margin: 0;
+  border-radius: 999px;
+  background: #cfd3d7;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.switch::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(30, 33, 36, 0.3);
+  transition: transform 0.2s cubic-bezier(0.3, 0.7, 0.4, 1.3);
+}
+
+.switch:checked {
+  background: var(--accent);
+}
+
+.switch:checked::after {
+  transform: translateX(18px);
+}
+
+.switch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .switch,
+  .switch::after {
+    transition: none;
+  }
+}
+
+.account-settings-note {
+  font-size: 12px;
+  color: var(--danger);
 }
 
 /* ── 목적지 설정 시트 ──────────────────────────────── */
@@ -787,14 +860,56 @@
   accent-color: var(--accent);
 }
 
-.dispatch-notice {
+/* 상단 알림 영역: 경보 배너와 발송 결과 알림을 위에서부터 쌓는다 */
+.map-notices {
   position: absolute;
   top: 68px;
-  left: 50%;
-  transform: translateX(-50%);
+  left: 16px;
+  right: 16px;
   z-index: 6;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.alert-banner {
+  width: 100%;
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 14px;
+  word-break: keep-all;
+  box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.6);
+  box-sizing: border-box;
+  animation: alert-pulse 1.4s ease-out infinite;
+}
+
+.alert-banner strong {
+  font-size: 17px;
+}
+
+@keyframes alert-pulse {
+  to {
+    box-shadow: 0 0 0 14px rgba(220, 38, 38, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .alert-banner {
+    animation: none;
+  }
+}
+
+.dispatch-notice {
   width: max-content;
-  max-width: calc(100% - 32px);
+  max-width: 100%;
   padding: 10px 14px;
   border-radius: 8px;
   font-size: 14px;
@@ -907,13 +1022,46 @@
   color: var(--accent);
 }
 
+/* GPS를 새로 받는 동안 아이콘을 돌린다 */
+.map-locate-fab-busy {
+  color: var(--accent);
+  cursor: progress;
+}
+
+.map-locate-fab-busy svg {
+  animation: locate-spin 1s linear infinite;
+}
+
+@keyframes locate-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* 체크포인트: 흰 점 위에 작은 빵. 지나온 점은 회색 점 + 흐린 빵 */
 .kakao-crumb {
-  font-size: 16px;
-  transform: translateY(4px);
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #fff;
+  border: 1.5px solid rgba(30, 33, 36, 0.18);
+  box-shadow: 0 1px 3px rgba(30, 33, 36, 0.3);
+  box-sizing: border-box;
+  font-size: 12px;
+  line-height: 1;
 }
 
 .kakao-crumb-passed {
-  opacity: 0.35;
+  background: #d9dcdf;
+  border-color: rgba(30, 33, 36, 0.12);
+  box-shadow: none;
+}
+
+.kakao-crumb-passed > span {
+  opacity: 0.45;
   filter: grayscale(1);
 }
 
@@ -971,6 +1119,46 @@
 
 .floating-nav-btn-danger:hover {
   background: #b91c1c;
+}
+
+/* 경보 유예 중 '나 괜찮아': 밝은 띠가 남은 시간만큼 줄어든다.
+   animationDuration/Delay는 MapPage가 남은 시간에 맞춰 넣는다 */
+.grace-btn {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  padding: 14px 28px;
+  font-size: 16px;
+  font-weight: 700;
+  background: var(--danger);
+  color: #fff;
+}
+
+.grace-btn:hover {
+  background: #b91c1c;
+}
+
+.grace-btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: rgba(255, 255, 255, 0.3);
+  transform-origin: left;
+  animation-name: grace-drain;
+  animation-timing-function: linear;
+  animation-fill-mode: both;
+  animation-duration: inherit;
+  animation-delay: inherit;
+}
+
+@keyframes grace-drain {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
 }
 
 /* 메신저 Nav는 하나의 요소를 유지한 채 채팅방에서만 상단으로 미끄러져 올라간다 */

@@ -31,7 +31,6 @@ export interface RouteSettings {
   origin: Coordinate
   destination: Coordinate
   etaMinutes: number
-  checkInIntervalMinutes: number
   deviationThresholdMeters: number
   stillnessThresholdMinutes: number
   // 실제 경로(보행/대중교통) 조회 결과. 조회 실패 시 없을 수 있고,
@@ -39,19 +38,23 @@ export interface RouteSettings {
   legs?: RouteLeg[]
 }
 
-export type AlertReason = 'deviation' | 'stillness' | 'overdue' | 'missed-checkin'
+export type AlertReason = 'deviation' | 'stillness' | 'overdue'
 
 export interface AlertInfo {
   reason: AlertReason
   triggeredAt: number
   message: string
+  // 이 시각(ms)까지 '나 괜찮아'를 누르지 않으면 비상 연락망에 발송한다. null이면 이미 발송됨
+  sendAt: number | null
 }
 
-export type SessionStatus = 'idle' | 'active' | 'alert' | 'resolved'
+// 경보가 뜬 뒤 비상 연락망에 보내기 전까지 '나 괜찮아'로 취소할 수 있는 시간
+export const ALERT_GRACE_MS = 30_000
+
+export type SessionStatus = 'idle' | 'active' | 'alert'
 
 export const ALERT_REASON_LABEL: Record<AlertReason, string> = {
   deviation: '경로 이탈',
   stillness: '장시간 정지/신호 끊김',
   overdue: '예상 도착 시간 초과',
-  'missed-checkin': '체크인 미응답',
 }
